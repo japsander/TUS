@@ -7,6 +7,8 @@ import {
   SurveySetpoint,
   TestInstrument,
   NadcapCheckItem,
+  TusTrendData,
+  DetectedDwellPeriod,
 } from '../types/tus';
 import { generateTusDocxBlob } from '../utils/docxGenerator';
 import { calculateVolumeInM3, calculateVolumeInCuFt, getMinRequiredSensors, CLASS_TOLERANCES, evaluateSetpoint } from '../utils/ams2750';
@@ -21,7 +23,9 @@ import {
   Layers,
   Box,
   Cpu,
+  TrendingUp,
 } from 'lucide-react';
+import { TusTrendGraph } from './TusTrendGraph';
 
 interface ReportPreviewModalProps {
   isOpen: boolean;
@@ -34,6 +38,8 @@ interface ReportPreviewModalProps {
   instrument: TestInstrument;
   checklist: NadcapCheckItem[];
   diagramImageBase64?: string;
+  trendData?: TusTrendData[];
+  dwellPeriods?: DetectedDwellPeriod[];
 }
 
 export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
@@ -47,6 +53,8 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
   instrument,
   checklist,
   diagramImageBase64,
+  trendData,
+  dwellPeriods,
 }) => {
   const [downloading, setDownloading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
@@ -192,6 +200,23 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
                   3D CAD snapshot ready for inclusion in generated Word doc
                 </div>
               )}
+            </div>
+            
+            {/* TUS Trend Graph Analysis */}
+            <div className="space-y-2 pt-2">
+              <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                <span>TUS Temperature Trend Analysis & Dwell Capture Points:</span>
+              </div>
+              <TusTrendGraph 
+                data={trendData || []} 
+                dwells={dwellPeriods || []} 
+                channels={channels}
+                tempUnit={meta.tempUnit}
+              />
+              <div className="text-[10px] text-slate-500 italic px-1">
+                Visual evidence of stabilized soak periods meeting AMS 2750 Rev H consecutive time requirements.
+              </div>
             </div>
 
             {/* Section Breakdown Preview */}

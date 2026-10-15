@@ -138,3 +138,17 @@ export interface SurveyMetadata {
   qualityManagerTitle: string;
   responsibleEngineerName: string;
 }
+
+export interface TusTrendData {
+  timeStr: string;
+  timestampSec: number;
+  [key: string]: number | string; // TC channel ID -> Temperature
+}
+
+export interface DetectedDwellPeriod {
+  targetTemp: number;
+  startIndex: number;
+  endIndex: number;
+  startTimeSec: number;
+  endTimeSec: number;
+}

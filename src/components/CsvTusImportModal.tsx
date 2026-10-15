@@ -5,6 +5,8 @@ import {
   FurnaceClass,
   TempUnit,
   SurveyMetadata,
+  TusTrendData,
+  DetectedDwellPeriod,
 } from '../types/tus';
 import {
   parseTusCsv,
@@ -13,6 +15,8 @@ import {
   CsvParseResult,
   DetectedDwell,
   CsvColumnMapping,
+  convertToTrendData,
+  convertToDwellPeriods,
 } from '../utils/csvTusParser';
 import {
   Upload,
@@ -39,7 +43,9 @@ interface CsvTusImportModalProps {
   meta: SurveyMetadata;
   onApplyImport: (
     updatedSetpoints: SurveySetpoint[],
-    updatedIntervalSeconds?: number
+    intervalSeconds?: number,
+    trendData?: TusTrendData[],
+    dwellPeriods?: DetectedDwellPeriod[]
   ) => void;
 }
 
@@ -198,7 +204,16 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
     const newInterval =
       updateInterval && parseResult ? parseResult.detectedIntervalSeconds : undefined;
 
-    onApplyImport(newSetpoints, newInterval);
+    // Prepare trend data for the report graph
+    let trendData: TusTrendData[] | undefined;
+    let dwellPeriods: DetectedDwellPeriod[] | undefined;
+    
+    if (parseResult && detectedDwells) {
+      trendData = convertToTrendData(parseResult.rows, mappings);
+      dwellPeriods = convertToDwellPeriods(detectedDwells, parseResult.rows);
+    }
+
+    onApplyImport(newSetpoints, newInterval, trendData, dwellPeriods);
     onClose();
   };
 

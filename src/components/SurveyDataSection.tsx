@@ -5,6 +5,8 @@ import {
   FurnaceClass,
   TempUnit,
   SurveyMetadata,
+  TusTrendData,
+  DetectedDwellPeriod,
 } from '../types/tus';
 import { CLASS_TOLERANCES, evaluateSetpoint } from '../utils/ams2750';
 import {
@@ -30,6 +32,8 @@ interface SurveyDataSectionProps {
   onUpdateSetpoints: (setpoints: SurveySetpoint[]) => void;
   onUpdateChannels: (channels: ThermocoupleChannel[]) => void;
   onUpdateMeta?: (meta: SurveyMetadata) => void;
+  onUpdateTrendData?: (data: TusTrendData[]) => void;
+  onUpdateDwellPeriods?: (periods: DetectedDwellPeriod[]) => void;
 }
 
 export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
@@ -42,6 +46,8 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
   onUpdateSetpoints,
   onUpdateChannels,
   onUpdateMeta,
+  onUpdateTrendData,
+  onUpdateDwellPeriods,
 }) => {
   const [activeSetpointId, setActiveSetpointId] = useState<string>(
     setpoints[0]?.id || ''
@@ -159,7 +165,9 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
 
   const handleApplyCsvImport = (
     importedSetpoints: SurveySetpoint[],
-    intervalSeconds?: number
+    intervalSeconds?: number,
+    trendData?: TusTrendData[],
+    dwellPeriods?: DetectedDwellPeriod[]
   ) => {
     onUpdateSetpoints(importedSetpoints);
     if (importedSetpoints[0]) {
@@ -170,6 +178,12 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
         ...meta,
         dataIntervalSeconds: intervalSeconds,
       });
+    }
+    if (trendData && onUpdateTrendData) {
+      onUpdateTrendData(trendData);
+    }
+    if (dwellPeriods && onUpdateDwellPeriods) {
+      onUpdateDwellPeriods(dwellPeriods);
     }
     setImportNotice(
       `Successfully imported ${importedSetpoints.length} TUS dwell periods (${importedSetpoints.map(s => `${s.targetTemp}${tempUnit}`).join(', ')}) with ${intervalSeconds ? `${intervalSeconds}s logging interval` : 'mapped channels'}.`

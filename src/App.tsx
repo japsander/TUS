@@ -17,6 +17,8 @@ import {
   UnitSystem,
   TempUnit,
   DimUnit,
+  TusTrendData,
+  DetectedDwellPeriod,
 } from './types/tus';
 import {
   generateStandardAMS2750Sensors,
@@ -246,6 +248,10 @@ export default function App() {
       },
     },
   ]);
+
+  // TUS Trend Data from CSV (for Report Graph)
+  const [trendData, setTrendData] = useState<TusTrendData[]>([]);
+  const [dwellPeriods, setDwellPeriods] = useState<DetectedDwellPeriod[]>([]);
 
   // Test Instrument Details (UK ISO/IEC 17025 Accredited)
   const [instrument, setInstrument] = useState<TestInstrument>({
@@ -871,6 +877,8 @@ export default function App() {
                 onUpdateSetpoints={setSetpoints}
                 onUpdateChannels={setChannels}
                 onUpdateMeta={setMeta}
+                onUpdateTrendData={setTrendData}
+                onUpdateDwellPeriods={setDwellPeriods}
               />
             )}
 
@@ -1054,6 +1062,8 @@ export default function App() {
         instrument={instrument}
         checklist={checklist}
         diagramImageBase64={diagramImageBase64}
+        trendData={trendData}
+        dwellPeriods={dwellPeriods}
       />
     </div>
   );

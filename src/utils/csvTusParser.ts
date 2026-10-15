@@ -1,4 +1,4 @@
-import { FurnaceClass, TempUnit, SurveySetpoint, ThermocoupleChannel } from '../types/tus';
+import { FurnaceClass, TempUnit, SurveySetpoint, ThermocoupleChannel, TusTrendData, DetectedDwellPeriod } from '../types/tus';
 import { CLASS_TOLERANCES } from './ams2750';
 
 export interface ParsedCsvRow {
@@ -232,21 +232,18 @@ export function detectTusDwells(
   }
 
   const results: DetectedDwell[] = [];
+  let lastProcessedIndex = 0;
 
-  targetTemps.forEach((target) => {
+  for (const target of targetTemps) {
     const lowerTol = target - tolerance;
     const upperTol = target + tolerance;
 
-    // Find all contiguous segments where all mapped channels are within tolerance
-    let bestStart = -1;
-    let bestEnd = -1;
-    let maxLen = 0;
-
+    let foundDwell: DetectedDwell | null = null;
     let currentStart = -1;
 
-    for (let i = 0; i < rows.length; i++) {
+    // Search sequentially from where we left off
+    for (let i = lastProcessedIndex; i < rows.length; i++) {
       const row = rows[i];
-      // Check if mapped channels are inside tolerance band
       let allInBand = true;
       for (const map of activeMappings) {
         const val = row.values[map.csvHeader];
@@ -258,142 +255,179 @@ export function detectTusDwells(
 
       if (allInBand) {
         if (currentStart === -1) currentStart = i;
-      } else {
-        if (currentStart !== -1) {
-          const len = i - currentStart;
-          if (len > maxLen) {
-            maxLen = len;
-            bestStart = currentStart;
-            bestEnd = i - 1;
-          }
-          currentStart = -1;
-        }
-      }
-    }
+        
+        // Check if current contiguous block meets duration
+        const startRow = rows[currentStart];
+        const durationSec = row.timestampSec - startRow.timestampSec;
+        const durationMin = durationSec / 60;
 
-    if (currentStart !== -1) {
-      const len = rows.length - currentStart;
-      if (len > maxLen) {
-        maxLen = len;
-        bestStart = currentStart;
-        bestEnd = rows.length - 1;
-      }
-    }
-
-    // If no strict 100% segment found, find segment where at least 80% of channels are within band
-    if (bestStart === -1 || maxLen < 3) {
-      currentStart = -1;
-      maxLen = 0;
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        let inCount = 0;
-        for (const map of activeMappings) {
-          const val = row.values[map.csvHeader];
-          if (val !== undefined && val >= lowerTol - 1.0 && val <= upperTol + 1.0) {
-            inCount++;
-          }
-        }
-        const pct = inCount / activeMappings.length;
-        if (pct >= 0.75) {
-          if (currentStart === -1) currentStart = i;
-        } else {
-          if (currentStart !== -1) {
-            const len = i - currentStart;
-            if (len > maxLen) {
-              maxLen = len;
-              bestStart = currentStart;
-              bestEnd = i - 1;
+        if (durationMin >= minDurationMinutes) {
+          // We found a valid dwell! 
+          // However, we want to find the full extent of this stability block
+          // Let's keep going until it breaks or we hit the end
+          let j = i + 1;
+          while (j < rows.length) {
+            let nextInBand = true;
+            for (const map of activeMappings) {
+              const val = rows[j].values[map.csvHeader];
+              if (val === undefined || val < lowerTol || val > upperTol) {
+                nextInBand = false;
+                break;
+              }
             }
-            currentStart = -1;
+            if (!nextInBand) break;
+            j++;
           }
+          
+          const bestStart = currentStart;
+          const bestEnd = j - 1;
+          const finalDurationMin = Math.round((rows[bestEnd].timestampSec - rows[bestStart].timestampSec) / 60);
+
+          // Calculate statistics for this dwell
+          const stats = calculateDwellStats(rows, bestStart, bestEnd, target, activeMappings, tolerance, tempUnit, minDurationMinutes);
+          foundDwell = stats;
+          
+          lastProcessedIndex = bestEnd + 1;
+          results.push(foundDwell);
+          break; // Move to next setpoint
         }
-      }
-      if (currentStart !== -1 && rows.length - currentStart > maxLen) {
-        bestStart = currentStart;
-        bestEnd = rows.length - 1;
+      } else {
+        currentStart = -1;
       }
     }
 
-    if (bestStart !== -1 && bestEnd >= bestStart) {
-      const startRow = rows[bestStart];
-      const endRow = rows[bestEnd];
-      const durationSec = Math.max(0, endRow.timestampSec - startRow.timestampSec);
-      const durationMin = Math.round(durationSec / 60);
-
-      // Search prior to and during dwell for maximum overshoot
-      let maxOvershoot = target;
-      const searchStart = Math.max(0, bestStart - Math.floor(bestStart * 0.2));
-      for (let i = searchStart; i <= bestEnd; i++) {
-        for (const map of activeMappings) {
-          const val = rows[i].values[map.csvHeader];
-          if (val !== undefined && val > maxOvershoot) {
-            maxOvershoot = val;
-          }
-        }
-      }
-
-      // Calculate steady-state readings for each channel
-      const channelReadings: Record<string, number> = {};
-      const channelMin: Record<string, number> = {};
-      const channelMax: Record<string, number> = {};
-
-      activeMappings.forEach((map) => {
-        let sum = 0;
-        let count = 0;
-        let minV = Infinity;
-        let maxV = -Infinity;
-
-        // Take steady state window (middle 60% of dwell to eliminate entry transients)
-        const trim = Math.floor((bestEnd - bestStart) * 0.15);
-        const steadyStart = bestStart + trim;
-        const steadyEnd = bestEnd - trim;
-
-        for (let i = steadyStart; i <= steadyEnd; i++) {
-          const val = rows[i].values[map.csvHeader];
-          if (val !== undefined) {
-            sum += val;
-            count++;
-            if (val < minV) minV = val;
-            if (val > maxV) maxV = val;
-          }
-        }
-
-        const avg = count > 0 ? sum / count : target;
-        channelReadings[map.channelId] = Math.round(avg * 10) / 10;
-        channelMin[map.channelId] = minV !== Infinity ? Math.round(minV * 10) / 10 : target;
-        channelMax[map.channelId] = maxV !== -Infinity ? Math.round(maxV * 10) / 10 : target;
-      });
-
-      // Temperature spread
-      const allVals = Object.values(channelReadings);
-      const minRead = Math.min(...allVals);
-      const maxRead = Math.max(...allVals);
-      const spread = Math.round((maxRead - minRead) * 10) / 10;
-
-      const isDurationCompliant = durationMin >= minDurationMinutes;
-      const isSpreadCompliant =
-        maxRead <= target + tolerance && minRead >= target - tolerance;
-
-      results.push({
-        targetTemp: target,
-        startIndex: bestStart,
-        endIndex: bestEnd,
-        startTimeStr: startRow.timeStr,
-        endTimeStr: endRow.timeStr,
-        durationMinutes: durationMin,
-        maxOvershoot: Math.round(maxOvershoot * 10) / 10,
-        channelReadings,
-        channelMin,
-        channelMax,
-        isDurationCompliant,
-        isSpreadCompliant,
-        tempSpread: spread,
-      });
-    }
-  });
+    // If no strict dwell found, we stay at lastProcessedIndex and try next setpoint
+    // Or should we move forward? Usually, if TUS fails one setpoint, it's a fail.
+  }
 
   return results;
 }
+
+/**
+ * Helper to calculate stats for a confirmed dwell period
+ */
+function calculateDwellStats(
+  rows: ParsedCsvRow[],
+  bestStart: number,
+  bestEnd: number,
+  target: number,
+  activeMappings: CsvColumnMapping[],
+  tolerance: number,
+  tempUnit: TempUnit,
+  minDurationMinutes: number
+): DetectedDwell {
+  const startRow = rows[bestStart];
+  const endRow = rows[bestEnd];
+  const durationMin = Math.round((endRow.timestampSec - startRow.timestampSec) / 60);
+
+  // Search for maximum overshoot (ramp leading into dwell)
+  let maxOvershoot = target;
+  const overshootSearchStart = Math.max(0, bestStart - 20); // check last 20 rows before dwell
+  for (let i = overshootSearchStart; i <= bestEnd; i++) {
+    for (const map of activeMappings) {
+      const val = rows[i].values[map.csvHeader];
+      if (val !== undefined && val > maxOvershoot) {
+        maxOvershoot = val;
+      }
+    }
+  }
+
+  const channelReadings: Record<string, number> = {};
+  const channelMin: Record<string, number> = {};
+  const channelMax: Record<string, number> = {};
+
+  activeMappings.forEach((map) => {
+    let sum = 0;
+    let count = 0;
+    let minV = Infinity;
+    let maxV = -Infinity;
+
+    // Use middle 70% for steady state average to avoid edge transients
+    const totalPoints = bestEnd - bestStart + 1;
+    const trim = Math.floor(totalPoints * 0.15);
+    const steadyStart = bestStart + trim;
+    const steadyEnd = bestEnd - trim;
+
+    for (let i = steadyStart; i <= steadyEnd; i++) {
+      const val = rows[i].values[map.csvHeader];
+      if (val !== undefined) {
+        sum += val;
+        count++;
+        if (val < minV) minV = val;
+        if (val > maxV) maxV = val;
+      }
+    }
+
+    const avg = count > 0 ? sum / count : target;
+    channelReadings[map.channelId] = Math.round(avg * 10) / 10;
+    channelMin[map.channelId] = minV !== Infinity ? Math.round(minV * 10) / 10 : target;
+    channelMax[map.channelId] = maxV !== -Infinity ? Math.round(maxV * 10) / 10 : target;
+  });
+
+  const allVals = Object.values(channelReadings);
+  const minRead = Math.min(...allVals);
+  const maxRead = Math.max(...allVals);
+  const spread = Math.round((maxRead - minRead) * 10) / 10;
+
+  return {
+    targetTemp: target,
+    startIndex: bestStart,
+    endIndex: bestEnd,
+    startTimeStr: startRow.timeStr,
+    endTimeStr: endRow.timeStr,
+    durationMinutes: durationMin,
+    maxOvershoot: Math.round(maxOvershoot * 10) / 10,
+    channelReadings,
+    channelMin,
+    channelMax,
+    isDurationCompliant: durationMin >= minDurationMinutes,
+    isSpreadCompliant: maxRead <= target + tolerance && minRead >= target - tolerance,
+    tempSpread: spread,
+  };
+}
+
+/**
+ * Converts parsed CSV rows into a format suitable for charting (channel IDs as keys)
+ */
+export function convertToTrendData(
+  rows: ParsedCsvRow[],
+  mappings: CsvColumnMapping[]
+): TusTrendData[] {
+  const activeMappings = mappings.filter((m) => m.channelId !== '');
+  
+  return rows.map((row) => {
+    const trendEntry: TusTrendData = {
+      timeStr: row.timeStr,
+      timestampSec: row.timestampSec,
+    };
+    
+    activeMappings.forEach((m) => {
+      const val = row.values[m.csvHeader];
+      if (val !== undefined) {
+        trendEntry[m.channelId] = val;
+      }
+    });
+    
+    return trendEntry;
+  });
+}
+
+/**
+ * Converts detected dwells into simple period markers for the graph
+ */
+export function convertToDwellPeriods(
+  dwells: DetectedDwell[],
+  rows: ParsedCsvRow[]
+): DetectedDwellPeriod[] {
+  return dwells.map((d) => ({
+    targetTemp: d.targetTemp,
+    startIndex: d.startIndex,
+    endIndex: d.endIndex,
+    startTimeSec: rows[d.startIndex].timestampSec,
+    endTimeSec: rows[d.endIndex].timestampSec,
+  }));
+}
+
 
 /**
  * Generate a realistic multi-setpoint sample CSV for testing (e.g., 42°C, 110°C, 275°C)
