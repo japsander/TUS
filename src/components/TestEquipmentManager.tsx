@@ -159,7 +159,7 @@ export const TestEquipmentManager: React.FC<TestEquipmentManagerProps> = ({
       const saved = localStorage.getItem('tus_instrument_presets_v2');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
-    return DEFAULT_AEROSPACE_PRESETS;
+    return [];
   });
 
   const [saveModalOpen, setSaveModalOpen] = useState(false);

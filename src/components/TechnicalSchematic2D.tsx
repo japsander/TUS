@@ -11,6 +11,7 @@ import {
   Layers,
   Eye,
   RotateCw,
+  RotateCcw,
   Compass,
   Sliders,
   Ruler,
@@ -54,6 +55,33 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
   const [showWireGrid, setShowWireGrid] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
   const [captureFeedback, setCaptureFeedback] = useState<string | null>(null);
+
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setDragStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStart.x;
+    const dy = e.clientY - dragStart.y;
+    setAzimuthDeg((prev) => (prev + dx * 0.75 + 360) % 360);
+    setElevationDeg((prev) => Math.max(-20, Math.min(85, prev - dy * 0.5)));
+    setDragStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.15 : -0.15;
+    setZoom((prev) => Math.max(0.4, Math.min(3.5, prev + delta)));
+  };
 
   // SVG canvas dimensions
   const svgWidth = 860;
@@ -345,6 +373,57 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
 
           <div className="w-[1px] h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
 
+          {/* Zoom controls */}
+          <div className="flex items-center gap-1 px-1">
+            <button
+              onClick={() => setZoom((z) => Math.max(0.4, z - 0.2))}
+              className={`p-1.5 rounded-lg cursor-pointer ${isWhiteTheme ? 'text-slate-700 hover:bg-slate-200' : 'text-slate-300 hover:bg-slate-800'}`}
+              title="Zoom Out"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <span className="text-[10px] font-mono font-bold w-10 text-center">{Math.round(zoom * 100)}%</span>
+            <button
+              onClick={() => setZoom((z) => Math.min(3.5, z + 0.2))}
+              className={`p-1.5 rounded-lg cursor-pointer ${isWhiteTheme ? 'text-slate-700 hover:bg-slate-200' : 'text-slate-300 hover:bg-slate-800'}`}
+              title="Zoom In"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="w-[1px] h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
+
+          {/* 360° Rotation controls */}
+          <div className="flex items-center gap-1 px-1">
+            <button
+              onClick={() => setAzimuthDeg((a) => (a - 45 + 360) % 360)}
+              className={`p-1.5 rounded-lg cursor-pointer ${isWhiteTheme ? 'text-slate-700 hover:bg-slate-200' : 'text-slate-300 hover:bg-slate-800'}`}
+              title="Rotate 45° Left"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+            <input
+              type="range"
+              min="0"
+              max="360"
+              step="1"
+              value={Math.round(azimuthDeg)}
+              onChange={(e) => setAzimuthDeg(parseFloat(e.target.value) || 0)}
+              className="w-20 accent-blue-600 cursor-pointer"
+              title="360° Azimuth Rotation"
+            />
+            <button
+              onClick={() => setAzimuthDeg((a) => (a + 45) % 360)}
+              className={`p-1.5 rounded-lg cursor-pointer ${isWhiteTheme ? 'text-slate-700 hover:bg-slate-200' : 'text-slate-300 hover:bg-slate-800'}`}
+              title="Rotate 45° Right"
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="w-[1px] h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
+
           {/* Theme Toggle (Drafting White vs Dark Blueprint) */}
           <button
             onClick={() => setIsWhiteTheme(!isWhiteTheme)}
@@ -377,7 +456,14 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
       )}
 
       {/* SVG Canvas Rendering 2D Isometric Technical Schematic */}
-      <div className="w-full flex-1 relative overflow-auto flex items-center justify-center p-2">
+      <div
+        className="w-full flex-1 relative overflow-auto flex items-center justify-center p-2 cursor-grab active:cursor-grabbing"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onWheel={handleWheel}
+      >
         <svg
           ref={svgRef}
           viewBox={`0 0 ${svgWidth} ${svgHeight}`}
@@ -507,6 +593,41 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
               <line x1={qwzVertices.fBR.x} y1={qwzVertices.fBR.y} x2={qwzVertices.rBR.x} y2={qwzVertices.rBR.y} />
               <line x1={qwzVertices.fBL.x} y1={qwzVertices.fBL.y} x2={qwzVertices.rBL.x} y2={qwzVertices.rBL.y} />
             </g>
+          </g>
+
+          {/* Front of Furnace Indicator Callout */}
+          <g>
+            <line
+              x1={(chamberVertices.fBL.x + chamberVertices.fBR.x) / 2}
+              y1={(chamberVertices.fBL.y + chamberVertices.fBR.y) / 2 + 5}
+              x2={(chamberVertices.fBL.x + chamberVertices.fBR.x) / 2}
+              y2={(chamberVertices.fBL.y + chamberVertices.fBR.y) / 2 + 40}
+              stroke="#2563EB"
+              strokeWidth="2"
+              strokeDasharray="3,3"
+              markerEnd="url(#arrow-blue-end)"
+            />
+            <rect
+              x={(chamberVertices.fBL.x + chamberVertices.fBR.x) / 2 - 85}
+              y={(chamberVertices.fBL.y + chamberVertices.fBR.y) / 2 + 40}
+              width="170"
+              height="24"
+              rx="5"
+              fill={isWhiteTheme ? '#1E293B' : '#0F172A'}
+              stroke="#3B82F6"
+              strokeWidth="1.5"
+              filter="url(#badge-shadow)"
+            />
+            <text
+              x={(chamberVertices.fBL.x + chamberVertices.fBR.x) / 2}
+              y={(chamberVertices.fBL.y + chamberVertices.fBR.y) / 2 + 56}
+              textAnchor="middle"
+              fill="#60A5FA"
+              fontSize="10"
+              fontWeight="bold"
+            >
+              ▲ FRONT OF FURNACE (DOOR)
+            </text>
           </g>
 
           {/* ----------------------------------------------------------- */}

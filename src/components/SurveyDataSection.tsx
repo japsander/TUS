@@ -128,35 +128,7 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
     onUpdateChannels(updated);
   };
 
-  // Realistic simulation of compliant TUS readings within AMS 2750 Rev H Class limits
-  const handleSimulateCompliantData = (spId: string) => {
-    const sp = setpoints.find((s) => s.id === spId);
-    if (!sp) return;
 
-    const target = sp.targetTemp;
-    // Keep variation well within tolerance (e.g., max 60% of class limit)
-    const maxOffset = tolerance * 0.55;
-
-    const newReadings: Record<string, number> = {};
-    channels.forEach((ch, idx) => {
-      // Natural thermal distribution: Top corners tend to be slightly hotter, floor slightly cooler
-      const heightBias = ((ch.y - 18) / 36) * (maxOffset * 0.4);
-      const randomNoise = (Math.sin(idx * 1.7) * (maxOffset * 0.5));
-      const simulatedRaw = Math.round((target + heightBias + randomNoise) * 10) / 10;
-      newReadings[ch.id] = simulatedRaw;
-    });
-
-    const updated = setpoints.map((s) =>
-      s.id === spId
-        ? {
-            ...s,
-            readings: newReadings,
-            maxOvershootObserved: target + Math.round((tolerance * 0.35) * 10) / 10,
-          }
-        : s
-    );
-    onUpdateSetpoints(updated);
-  };
 
   const currentSetpoint = setpoints.find((s) => s.id === activeSetpointId) || setpoints[0];
   const analysis = currentSetpoint
@@ -257,26 +229,14 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
             <span>Import TUS CSV</span>
           </button>
 
-          {currentSetpoint && (
-            <>
-              <button
-                onClick={() => handleSimulateCompliantData(currentSetpoint.id)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600/90 hover:bg-purple-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
-                title="Generate authentic AMS 2750 Rev H compliant test data"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Simulate Readings</span>
-              </button>
-              {setpoints.length > 1 && (
-                <button
-                  onClick={() => handleDeleteSetpoint(currentSetpoint.id)}
-                  className="p-1.5 rounded-xl bg-slate-800 hover:bg-red-950 text-slate-400 hover:text-red-400 border border-slate-700 transition-colors cursor-pointer"
-                  title="Delete this setpoint"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-            </>
+          {currentSetpoint && setpoints.length > 1 && (
+            <button
+              onClick={() => handleDeleteSetpoint(currentSetpoint.id)}
+              className="p-1.5 rounded-xl bg-slate-800 hover:bg-red-950 text-slate-400 hover:text-red-400 border border-slate-700 transition-colors cursor-pointer"
+              title="Delete this setpoint"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
           )}
         </div>
       </div>

@@ -40,6 +40,7 @@ import { TestEquipmentManager } from './components/TestEquipmentManager';
 import { WireRiggingGuide } from './components/WireRiggingGuide';
 import { QWZInfoPanel } from './components/QWZInfoPanel';
 import { ReportPreviewModal } from './components/ReportPreviewModal';
+import { InstructionManual } from './components/InstructionManual';
 import {
   FileText,
   Download,
@@ -61,6 +62,7 @@ import {
   Calendar,
   Plus,
   Trash2,
+  BookOpen,
 } from 'lucide-react';
 
 export default function App() {
@@ -125,133 +127,39 @@ export default function App() {
 
   // Survey Metadata (UK & Nadcap / AMS 2750 Rev H Standard)
   const [meta, setMeta] = useState<SurveyMetadata>({
-    reportNumber: 'TUS-2026-UK-HT04',
-    revision: 'Rev. 0',
+    reportNumber: '',
+    revision: '',
     date: new Date().toISOString().split('T')[0],
-    companyName: 'AeroThermal Technologies (UK) Ltd.',
-    facilityLocation: 'Aerospace Heat Treatment Centre — Midlands Facility',
-    furnaceId: 'FURNACE-HT-04',
-    furnaceName: 'Aerospace Batch Protective Atmosphere Furnace',
-    furnaceModel: 'Seco/Warwick Vector-1210',
-    furnaceSerial: 'SW-98214-GB',
+    companyName: '',
+    facilityLocation: '',
+    furnaceId: '',
+    furnaceName: '',
+    furnaceModel: '',
+    furnaceSerial: '',
     surveyReason: 'Periodic',
-    furnaceClass: 2, // Class 2 = ±6°C (±10°F)
+    furnaceClass: 2,
     instrumentationType: 'B',
-    operatingTempMin: 300,
-    operatingTempMax: 1150,
+    operatingTempMin: 0,
+    operatingTempMax: 0,
     unitSystem: 'metric',
     tempUnit: '°C',
     dimUnit: 'mm',
-    atmosphere: 'Endothermic Class 301 Protective Atmosphere',
-    heatingMethod: 'Silicon Carbide Electric Resistance Heating Elements',
+    atmosphere: '',
+    heatingMethod: '',
     loadCondition: 'Simulated Production Load',
-    fanCondition: 'Recirculation Fan High Speed On',
+    fanCondition: '',
     dataIntervalSeconds: 60,
     technicianName: '',
-    technicianTitle: 'Certified Pyrometry Specialist (CQI-9 / AMS 2750)',
+    technicianTitle: '',
     qualityManagerName: '',
-    qualityManagerTitle: 'Director of Aerospace Quality & Compliance',
+    qualityManagerTitle: '',
     responsibleEngineerName: '',
-    lastSatDate: '2026-09-01',
-    lastSatResult: 'Pass (Max Error 0.4°C)',
+    lastSatDate: '',
+    lastSatResult: '',
   });
 
   // Survey Setpoints in Celsius (°C)
-  const [setpoints, setSetpoints] = useState<SurveySetpoint[]>([
-    {
-      id: 'sp-1',
-      targetTemp: 350,
-      soakDurationMinutes: 30,
-      soakStartTime: '09:15',
-      soakEndTime: '09:45',
-      maxOvershootObserved: 351.4,
-      readings: {
-        'tc-1': 351.2,
-        'tc-2': 351.6,
-        'tc-3': 349.1,
-        'tc-4': 349.4,
-        'tc-5': 350.2,
-        'tc-6': 350.6,
-        'tc-7': 351.1,
-        'tc-8': 349.3,
-        'tc-9': 349.0,
-        'tc-10': 350.4,
-        'tc-11': 350.1,
-        'tc-12': 350.5,
-        'tc-13': 350.9,
-        'tc-14': 351.4,
-        'tc-15': 349.7,
-        'tc-16': 349.8,
-        'tc-17': 351.5,
-        'tc-18': 351.8,
-        'tc-19': 348.9,
-        'tc-20': 349.2,
-        'tc-21': 350.8,
-      },
-    },
-    {
-      id: 'sp-2',
-      targetTemp: 650,
-      soakDurationMinutes: 30,
-      soakStartTime: '11:00',
-      soakEndTime: '11:30',
-      maxOvershootObserved: 652.1,
-      readings: {
-        'tc-1': 651.8,
-        'tc-2': 652.2,
-        'tc-3': 648.4,
-        'tc-4': 648.9,
-        'tc-5': 650.1,
-        'tc-6': 650.7,
-        'tc-7': 651.5,
-        'tc-8': 648.8,
-        'tc-9': 648.3,
-        'tc-10': 650.6,
-        'tc-11': 650.0,
-        'tc-12': 650.8,
-        'tc-13': 651.2,
-        'tc-14': 652.0,
-        'tc-15': 649.1,
-        'tc-16': 649.3,
-        'tc-17': 652.1,
-        'tc-18': 652.5,
-        'tc-19': 648.2,
-        'tc-20': 648.7,
-        'tc-21': 651.1,
-      },
-    },
-    {
-      id: 'sp-3',
-      targetTemp: 1050,
-      soakDurationMinutes: 30,
-      soakStartTime: '13:20',
-      soakEndTime: '13:50',
-      maxOvershootObserved: 1052.8,
-      readings: {
-        'tc-1': 1051.9,
-        'tc-2': 1052.6,
-        'tc-3': 1047.8,
-        'tc-4': 1048.4,
-        'tc-5': 1050.2,
-        'tc-6': 1050.8,
-        'tc-7': 1051.7,
-        'tc-8': 1048.2,
-        'tc-9': 1047.6,
-        'tc-10': 1050.5,
-        'tc-11': 1050.1,
-        'tc-12': 1050.9,
-        'tc-13': 1051.4,
-        'tc-14': 1052.4,
-        'tc-15': 1048.9,
-        'tc-16': 1049.0,
-        'tc-17': 1052.3,
-        'tc-18': 1052.9,
-        'tc-19': 1047.5,
-        'tc-20': 1048.0,
-        'tc-21': 1051.2,
-      },
-    },
-  ]);
+  const [setpoints, setSetpoints] = useState<SurveySetpoint[]>([]);
 
   // TUS Trend Data from CSV (for Report Graph)
   const [trendData, setTrendData] = useState<TusTrendData[]>([]);
@@ -383,14 +291,14 @@ export default function App() {
 
   // Test Instrument Details (UK ISO/IEC 17025 Accredited)
   const [instrument, setInstrument] = useState<TestInstrument>({
-    manufacturer: 'Yokogawa Metrology UK',
-    model: 'DX2030 Paperless Advanced TUS Recorder',
-    serialNumber: 'YK-884920-TUS',
-    calibrationDate: '2026-08-14',
-    calibrationDueDate: '2027-02-14',
-    traceabilityNumber: 'UKAS-CAL-74921-2026',
-    maxPermissibleError: 0.2, // °C
-    calibrationLab: 'Trescal UK Metrology Services (UKAS Accredited)',
+    manufacturer: '',
+    model: '',
+    serialNumber: '',
+    calibrationDate: '',
+    calibrationDueDate: '',
+    traceabilityNumber: '',
+    maxPermissibleError: 0,
+    calibrationLab: '',
   });
 
   // Nadcap AC7102/8 Audit Checklist
@@ -468,8 +376,8 @@ export default function App() {
   ]);
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<'visual' | 'dimensions' | 'channels' | 'equipment' | 'survey' | 'nadcap' | 'meta'>(
-    'visual'
+  const [activeTab, setActiveTab] = useState<'visual' | 'dimensions' | 'channels' | 'equipment' | 'survey' | 'nadcap' | 'meta' | 'manual'>(
+    'manual'
   );
 
   // Diagram Snapshot for Docx Embedding
@@ -948,6 +856,18 @@ export default function App() {
               <Settings className="w-3.5 h-3.5" />
               <span>Report Details</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('manual')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer border ${
+                activeTab === 'manual'
+                  ? 'bg-blue-600 text-white font-bold shadow-md border-blue-400'
+                  : 'text-cyan-300 hover:text-white hover:bg-slate-800/60 border-cyan-900/60 bg-cyan-950/30'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Instruction Manual</span>
+            </button>
           </div>
 
           {/* Active Tab Panel Content */}
@@ -1020,6 +940,14 @@ export default function App() {
                 onUpdateChecklist={setChecklist}
                 onUpdateInstrument={setInstrument}
                 onUpdateMeta={setMeta}
+              />
+            )}
+
+            {activeTab === 'manual' && (
+              <InstructionManual
+                tempUnit={tempUnit}
+                dimUnit={dimUnit}
+                onNavigateTab={(tab) => setActiveTab(tab as any)}
               />
             )}
 

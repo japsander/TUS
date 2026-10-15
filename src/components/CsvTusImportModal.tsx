@@ -126,12 +126,7 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
     }
   };
 
-  // Load sample multi-setpoint TUS CSV (e.g. 42C, 110C, 275C)
-  const handleLoadSample = () => {
-    const sample = generateSampleTusCsv(channels, tempUnit);
-    setTargetTempsInput('42, 110, 275');
-    processCsvText(sample, 'AMS2750_MultiRun_42C_110C_275C_Yokogawa.csv');
-  };
+
 
   // Update a column's mapped channel
   const handleMappingChange = (csvHeader: string, newChannelId: string) => {
@@ -252,36 +247,21 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
         <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs">
           {/* 1. File Upload / Sample Loader */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <label className="md:col-span-2 flex flex-col items-center justify-center border-2 border-dashed border-slate-700 hover:border-cyan-500/80 rounded-xl p-4 bg-slate-950/60 cursor-pointer transition-colors group">
+            <label className="md:col-span-3 flex flex-col items-center justify-center border-2 border-dashed border-slate-700 hover:border-cyan-500/80 rounded-xl p-6 bg-slate-950/60 cursor-pointer transition-colors group">
               <input
                 type="file"
                 accept=".csv,.txt,.tsv,.dat"
                 onChange={handleFileUpload}
                 className="hidden"
               />
-              <Upload className="w-6 h-6 text-slate-400 group-hover:text-cyan-400 mb-1 transition-colors" />
+              <Upload className="w-8 h-8 text-slate-400 group-hover:text-cyan-400 mb-2 transition-colors" />
               <span className="text-xs font-semibold text-slate-200 group-hover:text-cyan-300">
                 {fileName ? fileName : 'Click to select TUS CSV / Datapaq / Yokogawa log file'}
               </span>
-              <span className="text-[11px] text-slate-500">
+              <span className="text-[11px] text-slate-500 mt-1">
                 Supports .csv, .tsv, comma, or semicolon-separated exports
               </span>
             </label>
-
-            {/* Quick Sample Button */}
-            <div className="flex flex-col justify-center bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-2">
-              <span className="text-slate-400 font-medium text-[11px]">Need a test dataset?</span>
-              <button
-                onClick={handleLoadSample}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-colors cursor-pointer shadow-sm"
-              >
-                <Sparkles className="w-4 h-4 text-cyan-200" />
-                <span>Load Sample Run: 42°C, 110°C, 275°C</span>
-              </button>
-              <span className="text-[10px] text-slate-500">
-                Simulates real 3-stage aerospace survey with 30s logging frequency.
-              </span>
-            </div>
           </div>
 
           {errorMsg && (
