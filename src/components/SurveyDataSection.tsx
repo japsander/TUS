@@ -4,6 +4,7 @@ import {
   ThermocoupleChannel,
   FurnaceClass,
   TempUnit,
+  SurveyMetadata,
 } from '../types/tus';
 import { CLASS_TOLERANCES, evaluateSetpoint } from '../utils/ams2750';
 import {
@@ -15,7 +16,9 @@ import {
   XCircle,
   Clock,
   TrendingUp,
+  Upload,
 } from 'lucide-react';
+import { CsvTusImportModal } from './CsvTusImportModal';
 
 interface SurveyDataSectionProps {
   setpoints: SurveySetpoint[];
@@ -23,8 +26,10 @@ interface SurveyDataSectionProps {
   furnaceClass: FurnaceClass;
   tempUnit: TempUnit;
   instrumentError: number;
+  meta: SurveyMetadata;
   onUpdateSetpoints: (setpoints: SurveySetpoint[]) => void;
   onUpdateChannels: (channels: ThermocoupleChannel[]) => void;
+  onUpdateMeta?: (meta: SurveyMetadata) => void;
 }
 
 export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
@@ -33,12 +38,16 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
   furnaceClass,
   tempUnit,
   instrumentError,
+  meta,
   onUpdateSetpoints,
   onUpdateChannels,
+  onUpdateMeta,
 }) => {
   const [activeSetpointId, setActiveSetpointId] = useState<string>(
     setpoints[0]?.id || ''
   );
+  const [csvModalOpen, setCsvModalOpen] = useState(false);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
 
   const tolerance = CLASS_TOLERANCES[furnaceClass][tempUnit];
 
@@ -148,8 +157,43 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
     ? evaluateSetpoint(currentSetpoint, channels, furnaceClass, tempUnit, instrumentError)
     : null;
 
+  const handleApplyCsvImport = (
+    importedSetpoints: SurveySetpoint[],
+    intervalSeconds?: number
+  ) => {
+    onUpdateSetpoints(importedSetpoints);
+    if (importedSetpoints[0]) {
+      setActiveSetpointId(importedSetpoints[0].id);
+    }
+    if (intervalSeconds !== undefined && onUpdateMeta) {
+      onUpdateMeta({
+        ...meta,
+        dataIntervalSeconds: intervalSeconds,
+      });
+    }
+    setImportNotice(
+      `Successfully imported ${importedSetpoints.length} TUS dwell periods (${importedSetpoints.map(s => `${s.targetTemp}${tempUnit}`).join(', ')}) with ${intervalSeconds ? `${intervalSeconds}s logging interval` : 'mapped channels'}.`
+    );
+    setTimeout(() => setImportNotice(null), 8000);
+  };
+
   return (
     <div className="space-y-6">
+      {importNotice && (
+        <div className="p-3.5 rounded-xl bg-emerald-950/80 border border-emerald-700 text-emerald-200 text-xs flex items-center justify-between gap-3 shadow-lg animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{importNotice}</span>
+          </div>
+          <button
+            onClick={() => setImportNotice(null)}
+            className="text-emerald-400 hover:text-white"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Setpoint Navigation & Selector */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
@@ -188,27 +232,39 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
           </button>
         </div>
 
-        {currentSetpoint && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => handleSimulateCompliantData(currentSetpoint.id)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-purple-600/90 hover:bg-purple-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
-              title="Generate authentic AMS 2750 Rev H compliant test data"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Simulate Compliant Readings</span>
-            </button>
-            {setpoints.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Import TUS CSV Button */}
+          <button
+            onClick={() => setCsvModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
+            title="Import TUS datalogger CSV, assign columns by TC number, and auto-detect compliant dwells"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>Import TUS CSV</span>
+          </button>
+
+          {currentSetpoint && (
+            <>
               <button
-                onClick={() => handleDeleteSetpoint(currentSetpoint.id)}
-                className="p-1.5 rounded-xl bg-slate-800 hover:bg-red-950 text-slate-400 hover:text-red-400 border border-slate-700 transition-colors cursor-pointer"
-                title="Delete this setpoint"
+                onClick={() => handleSimulateCompliantData(currentSetpoint.id)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600/90 hover:bg-purple-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
+                title="Generate authentic AMS 2750 Rev H compliant test data"
               >
-                <Trash2 className="w-4 h-4" />
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Simulate Readings</span>
               </button>
-            )}
-          </div>
-        )}
+              {setpoints.length > 1 && (
+                <button
+                  onClick={() => handleDeleteSetpoint(currentSetpoint.id)}
+                  className="p-1.5 rounded-xl bg-slate-800 hover:bg-red-950 text-slate-400 hover:text-red-400 border border-slate-700 transition-colors cursor-pointer"
+                  title="Delete this setpoint"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {currentSetpoint && analysis && (
@@ -446,6 +502,18 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
           </div>
         </div>
       )}
+
+      {/* TUS CSV Import & Dwell Detection Modal */}
+      <CsvTusImportModal
+        isOpen={csvModalOpen}
+        onClose={() => setCsvModalOpen(false)}
+        channels={channels}
+        setpoints={setpoints}
+        furnaceClass={furnaceClass}
+        tempUnit={tempUnit}
+        meta={meta}
+        onApplyImport={handleApplyCsvImport}
+      />
     </div>
   );
 };

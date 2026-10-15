@@ -429,29 +429,71 @@ export function getLogicalWireRiggingSchedule(
     }
   };
 
-  // Determine key corners and center
-  const is21Point = map.has(11) && map.has(1) && map.has(17);
-  const centerNum = is21Point ? 11 : 5;
-  const centerCh = map.get(centerNum) || channels.find((c) => c.label.toLowerCase().includes('center')) || channels[0];
+  // Dynamically and robustly detect the 8 corners and center hub by 3D coordinates
+  // Works with 9-point, 13-point, 14-point, 21-point, or custom arrays!
+  const sortedByX = [...channels].sort((a, b) => a.x - b.x);
+  const minX = sortedByX[0]?.x ?? 0;
+  const maxX = sortedByX[sortedByX.length - 1]?.x ?? 0;
+  const midX = (minX + maxX) / 2;
 
-  // 4 Front corners
-  const fTL = 1; // Front Top Left
-  const fTR = 2; // Front Top Right
-  const fBR = 3; // Front Bottom Right
-  const fBL = 4; // Front Bottom Left
+  const sortedByY = [...channels].sort((a, b) => a.y - b.y);
+  const minY = sortedByY[0]?.y ?? 0;
+  const maxY = sortedByY[sortedByY.length - 1]?.y ?? 0;
+  const midY = (minY + maxY) / 2;
 
-  // 4 Rear corners
-  const rTL = is21Point ? 17 : 6; // Rear Top Left
-  const rTR = is21Point ? 18 : 7; // Rear Top Right
-  const rBR = is21Point ? 19 : 8; // Rear Bottom Right
-  const rBL = is21Point ? 20 : 9; // Rear Bottom Left
+  const sortedByZ = [...channels].sort((a, b) => a.z - b.z);
+  const minZ = sortedByZ[0]?.z ?? 0;
+  const maxZ = sortedByZ[sortedByZ.length - 1]?.z ?? 0;
+  const midZ = (minZ + maxZ) / 2;
+
+  // Closest channel helper
+  const findClosest = (tx: number, ty: number, tz: number, excludeIds: Set<string> = new Set()) => {
+    let closest: ThermocoupleChannel = channels[0];
+    let minDist = Infinity;
+    for (const ch of channels) {
+      if (excludeIds.has(ch.id)) continue;
+      const d = Math.hypot(ch.x - tx, ch.y - ty, ch.z - tz);
+      if (d < minDist) {
+        minDist = d;
+        closest = ch;
+      }
+    }
+    return closest;
+  };
+
+  const centerCh =
+    channels.find((c) => c.label.toLowerCase().includes('center') || c.label.toLowerCase().includes('hub')) ||
+    findClosest(midX, midY, midZ);
+  const centerNum = centerCh.channelNumber;
+
+  // 4 Front corners (x ≈ minX)
+  const chFBL = findClosest(minX, minY, minZ); // Front Bottom Left
+  const chFBR = findClosest(minX, minY, maxZ); // Front Bottom Right
+  const chFTL = findClosest(minX, maxY, minZ); // Front Top Left
+  const chFTR = findClosest(minX, maxY, maxZ); // Front Top Right
+
+  // 4 Rear corners (x ≈ maxX)
+  const chRBL = findClosest(maxX, minY, minZ); // Rear Bottom Left
+  const chRBR = findClosest(maxX, minY, maxZ); // Rear Bottom Right
+  const chRTL = findClosest(maxX, maxY, minZ); // Rear Top Left
+  const chRTR = findClosest(maxX, maxY, maxZ); // Rear Top Right
+
+  const fBL = chFBL.channelNumber;
+  const fBR = chFBR.channelNumber;
+  const fTL = chFTL.channelNumber;
+  const fTR = chFTR.channelNumber;
+
+  const rBL = chRBL.channelNumber;
+  const rBR = chRBR.channelNumber;
+  const rTL = chRTL.channelNumber;
+  const rTR = chRTR.channelNumber;
+
+  const is21Point = map.has(21) && map.has(1) && map.has(17);
 
   // -----------------------------------------------------------
   // STEP 1: 4 MAIN 3D CROSS-BODY DIAGONALS (OPPOSITE CORNERS THROUGH CENTER HUB)
   // -----------------------------------------------------------
-  // Diagonal 1: Front Bottom Left <-> Center Hub <-> Rear Upper Right
-  const chFBL = map.get(fBL);
-  const chRTR = map.get(rTR);
+  // Diagonal 1: Front Bottom Left <-> Center Hub <-> Rear Top Right
   if (chFBL && centerCh && chRTR) {
     const span = calcDistance3D(chFBL, chRTR);
     oppositeCornerDiagonals.push({
@@ -461,15 +503,13 @@ export function getLogicalWireRiggingSchedule(
       center: centerCh,
       cornerB: chRTR,
       totalSpanLength: span,
-      description: `Continuous diagonal tension cable spanning from TC ${fBL} (Front Bottom Left) through Center Hub TC ${centerNum} to TC ${rTR} (Rear Top Right). Cut length: ${span} ${dimUnit}.`,
+      description: `Continuous opposite-corner diagonal tension cable spanning from TC ${fBL} (Front Bottom Left) through Center Hub TC ${centerNum} to TC ${rTR} (Rear Top Right). Cut length: ${span} ${dimUnit}.`,
     });
-    addCable(fBL, centerNum, '3d-diagonal', `Main Diagonal 1A (TC ${fBL} ➔ Center TC ${centerNum})`, `Tension span from Front Bottom Left to Center Spider Hub`);
-    addCable(centerNum, rTR, '3d-diagonal', `Main Diagonal 1B (Center TC ${centerNum} ➔ TC ${rTR})`, `Tension span from Center Spider Hub to Rear Top Right`);
+    addCable(fBL, centerNum, '3d-diagonal', `Main Diagonal 1A (TC ${fBL} ➔ Center TC ${centerNum})`, `Tension span from Front Bottom Left to Center Hub`);
+    addCable(centerNum, rTR, '3d-diagonal', `Main Diagonal 1B (Center TC ${centerNum} ➔ TC ${rTR})`, `Tension span from Center Hub to Rear Top Right`);
   }
 
-  // Diagonal 2: Front Bottom Right <-> Center Hub <-> Rear Upper Left
-  const chFBR = map.get(fBR);
-  const chRTL = map.get(rTL);
+  // Diagonal 2: Front Bottom Right <-> Center Hub <-> Rear Top Left
   if (chFBR && centerCh && chRTL) {
     const span = calcDistance3D(chFBR, chRTL);
     oppositeCornerDiagonals.push({
@@ -479,15 +519,13 @@ export function getLogicalWireRiggingSchedule(
       center: centerCh,
       cornerB: chRTL,
       totalSpanLength: span,
-      description: `Continuous diagonal tension cable spanning from TC ${fBR} (Front Bottom Right) through Center Hub TC ${centerNum} to TC ${rTL} (Rear Top Left). Cut length: ${span} ${dimUnit}.`,
+      description: `Continuous opposite-corner diagonal tension cable spanning from TC ${fBR} (Front Bottom Right) through Center Hub TC ${centerNum} to TC ${rTL} (Rear Top Left). Cut length: ${span} ${dimUnit}.`,
     });
-    addCable(fBR, centerNum, '3d-diagonal', `Main Diagonal 2A (TC ${fBR} ➔ Center TC ${centerNum})`, `Tension span from Front Bottom Right to Center Spider Hub`);
-    addCable(centerNum, rTL, '3d-diagonal', `Main Diagonal 2B (Center TC ${centerNum} ➔ TC ${rTL})`, `Tension span from Center Spider Hub to Rear Top Left`);
+    addCable(fBR, centerNum, '3d-diagonal', `Main Diagonal 2A (TC ${fBR} ➔ Center TC ${centerNum})`, `Tension span from Front Bottom Right to Center Hub`);
+    addCable(centerNum, rTL, '3d-diagonal', `Main Diagonal 2B (Center TC ${centerNum} ➔ TC ${rTL})`, `Tension span from Center Hub to Rear Top Left`);
   }
 
-  // Diagonal 3: Front Upper Left <-> Center Hub <-> Rear Bottom Right
-  const chFTL = map.get(fTL);
-  const chRBR = map.get(rBR);
+  // Diagonal 3: Front Top Left <-> Center Hub <-> Rear Bottom Right
   if (chFTL && centerCh && chRBR) {
     const span = calcDistance3D(chFTL, chRBR);
     oppositeCornerDiagonals.push({
@@ -497,15 +535,13 @@ export function getLogicalWireRiggingSchedule(
       center: centerCh,
       cornerB: chRBR,
       totalSpanLength: span,
-      description: `Continuous diagonal tension cable spanning from TC ${fTL} (Front Top Left) through Center Hub TC ${centerNum} to TC ${rBR} (Rear Bottom Right). Cut length: ${span} ${dimUnit}.`,
+      description: `Continuous opposite-corner diagonal tension cable spanning from TC ${fTL} (Front Top Left) through Center Hub TC ${centerNum} to TC ${rBR} (Rear Bottom Right). Cut length: ${span} ${dimUnit}.`,
     });
-    addCable(fTL, centerNum, '3d-diagonal', `Main Diagonal 3A (TC ${fTL} ➔ Center TC ${centerNum})`, `Tension span from Front Top Left to Center Spider Hub`);
-    addCable(centerNum, rBR, '3d-diagonal', `Main Diagonal 3B (Center TC ${centerNum} ➔ TC ${rBR})`, `Tension span from Center Spider Hub to Rear Bottom Right`);
+    addCable(fTL, centerNum, '3d-diagonal', `Main Diagonal 3A (TC ${fTL} ➔ Center TC ${centerNum})`, `Tension span from Front Top Left to Center Hub`);
+    addCable(centerNum, rBR, '3d-diagonal', `Main Diagonal 3B (Center TC ${centerNum} ➔ TC ${rBR})`, `Tension span from Center Hub to Rear Bottom Right`);
   }
 
-  // Diagonal 4: Front Upper Right <-> Center Hub <-> Rear Bottom Left
-  const chFTR = map.get(fTR);
-  const chRBL = map.get(rBL);
+  // Diagonal 4: Front Top Right <-> Center Hub <-> Rear Bottom Left
   if (chFTR && centerCh && chRBL) {
     const span = calcDistance3D(chFTR, chRBL);
     oppositeCornerDiagonals.push({
@@ -515,10 +551,10 @@ export function getLogicalWireRiggingSchedule(
       center: centerCh,
       cornerB: chRBL,
       totalSpanLength: span,
-      description: `Continuous diagonal tension cable spanning from TC ${fTR} (Front Top Right) through Center Hub TC ${centerNum} to TC ${rBL} (Rear Bottom Left). Cut length: ${span} ${dimUnit}.`,
+      description: `Continuous opposite-corner diagonal tension cable spanning from TC ${fTR} (Front Top Right) through Center Hub TC ${centerNum} to TC ${rBL} (Rear Bottom Left). Cut length: ${span} ${dimUnit}.`,
     });
-    addCable(fTR, centerNum, '3d-diagonal', `Main Diagonal 4A (TC ${fTR} ➔ Center TC ${centerNum})`, `Tension span from Front Top Right to Center Spider Hub`);
-    addCable(centerNum, rBL, '3d-diagonal', `Main Diagonal 4B (Center TC ${centerNum} ➔ TC ${rBL})`, `Tension span from Center Spider Hub to Rear Bottom Left`);
+    addCable(fTR, centerNum, '3d-diagonal', `Main Diagonal 4A (TC ${fTR} ➔ Center TC ${centerNum})`, `Tension span from Front Top Right to Center Hub`);
+    addCable(centerNum, rBL, '3d-diagonal', `Main Diagonal 4B (Center TC ${centerNum} ➔ TC ${rBL})`, `Tension span from Center Hub to Rear Bottom Left`);
   }
 
   // -----------------------------------------------------------

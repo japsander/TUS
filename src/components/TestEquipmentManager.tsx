@@ -20,6 +20,9 @@ import {
   Layers,
   Sparkles,
   Info,
+  Save,
+  RotateCcw,
+  X,
 } from 'lucide-react';
 
 interface TestEquipmentManagerProps {
@@ -28,6 +31,95 @@ interface TestEquipmentManagerProps {
   channels: ThermocoupleChannel[];
   tempUnit: TempUnit;
 }
+
+export interface AerospaceInstrumentPreset {
+  id: string;
+  label: string;
+  instrument: Partial<TestInstrument>;
+}
+
+export const DEFAULT_AEROSPACE_PRESETS: AerospaceInstrumentPreset[] = [
+  {
+    id: 'yokogawa',
+    label: 'Yokogawa DX2030 (UKAS Accredited)',
+    instrument: {
+      manufacturer: 'Yokogawa Metrology UK',
+      model: 'DX2030 Paperless Advanced TUS Recorder',
+      serialNumber: 'YK-884920-TUS',
+      assetTag: 'AST-AERO-042',
+      equipmentType: 'Paperless Video Graphic TUS Data Logger',
+      calibrationStandard: 'UKAS / ISO/IEC 17025 Accredited Calibration',
+      traceabilityNumber: 'UKAS-CAL-74921-2026',
+      calibrationLab: 'Trescal UK Metrology Services (UKAS Lab #0123)',
+      maxPermissibleError: 0.2,
+      calibratedByTechnician: 'D. Edwards (Senior Calibration Metrologist)',
+    },
+  },
+  {
+    id: 'eurotherm',
+    label: 'Eurotherm Nanodac High-Precision DAS',
+    instrument: {
+      manufacturer: 'Eurotherm by Schneider Electric',
+      model: 'Nanodac Multi-Channel Precision TUS Recorder',
+      serialNumber: 'ET-554109-ND',
+      assetTag: 'AST-AERO-088',
+      equipmentType: 'Digital Graphic Recorder / Controller',
+      calibrationStandard: 'ISO/IEC 17025 Accredited Laboratory',
+      traceabilityNumber: 'NIST-CAL-99382-2026',
+      calibrationLab: 'Eurotherm UKAS Calibration Laboratory',
+      maxPermissibleError: 0.25,
+      calibratedByTechnician: 'R. Hall (Certified Pyrometry Inspector)',
+    },
+  },
+  {
+    id: 'fluke',
+    label: 'Fluke Hydra Series III 2638A',
+    instrument: {
+      manufacturer: 'Fluke Calibration',
+      model: 'Hydra Series III 2638A Precision Data Acquisition System',
+      serialNumber: 'FLK-410982-HY',
+      assetTag: 'AST-MET-115',
+      equipmentType: 'High-Accuracy Data Acquisition System',
+      calibrationStandard: 'UKAS National Physical Laboratory (NPL) Traceable',
+      traceabilityNumber: 'UKAS-FLK-88123-2026',
+      calibrationLab: 'Fluke UK Service & Metrology Centre',
+      maxPermissibleError: 0.18,
+      calibratedByTechnician: 'S. Jenkins (Metrology Specialist)',
+    },
+  },
+  {
+    id: 'keysight',
+    label: 'Keysight DAQ970A Precision DAS',
+    instrument: {
+      manufacturer: 'Keysight Technologies',
+      model: 'DAQ970A Precision Metrology Data Acquisition System',
+      serialNumber: 'MY-59002341',
+      assetTag: 'AST-MET-204',
+      equipmentType: '6½-Digit Multimeter & Multiplexer DAS',
+      calibrationStandard: 'ANSI/NCSL Z540-1-1994 Traceable',
+      traceabilityNumber: 'NIST-821-24910-KEY',
+      calibrationLab: 'Keysight Accredited Metrology Laboratory',
+      maxPermissibleError: 0.15,
+      calibratedByTechnician: 'M. Vance (Lead Pyrometry Metrologist)',
+    },
+  },
+  {
+    id: 'grant',
+    label: 'Grant Squirrel SQ2040 (UK Metrology)',
+    instrument: {
+      manufacturer: 'Grant Instruments Cambridge Ltd',
+      model: 'Squirrel SQ2040 2F8 Portable TUS Data Logger',
+      serialNumber: 'GRT-SQ-77291',
+      assetTag: 'AST-AERO-109',
+      equipmentType: 'High-Accuracy Multi-Channel Logger',
+      calibrationStandard: 'UKAS Accredited Lab Calibration',
+      traceabilityNumber: 'UKAS-GRT-49102-2026',
+      calibrationLab: 'Grant Metrology UKAS Calibration Centre',
+      maxPermissibleError: 0.22,
+      calibratedByTechnician: 'P. Stewart (Pyrometry Specialist)',
+    },
+  },
+];
 
 export const TestEquipmentManager: React.FC<TestEquipmentManagerProps> = ({
   instrument,
@@ -61,77 +153,120 @@ export const TestEquipmentManager: React.FC<TestEquipmentManagerProps> = ({
   const mpeLimit = tempUnit === '°C' ? 0.6 : 1.0;
   const isMpeCompliant = instrument.maxPermissibleError <= mpeLimit;
 
-  // Presets for common aerospace TUS recorders
-  const applyPreset = (presetKey: string) => {
+  // Preset management with persistent localStorage
+  const [presets, setPresets] = useState<AerospaceInstrumentPreset[]>(() => {
+    try {
+      const saved = localStorage.getItem('tus_instrument_presets_v2');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return DEFAULT_AEROSPACE_PRESETS;
+  });
+
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [newPresetLabel, setNewPresetLabel] = useState('');
+  const [customPresetModalOpen, setCustomPresetModalOpen] = useState(false);
+  const [customForm, setCustomForm] = useState({
+    label: '',
+    manufacturer: '',
+    model: '',
+    serialNumber: '',
+    assetTag: '',
+    equipmentType: 'TUS Data Acquisition System',
+    calibrationLab: 'UKAS / NIST Accredited Metrology Lab',
+    traceabilityNumber: 'UKAS-CERT-' + Math.floor(10000 + Math.random() * 90000),
+    calibrationStandard: 'ISO/IEC 17025 Accredited Calibration',
+    maxPermissibleError: 0.2,
+  });
+
+  const savePresetsToStorage = (updated: AerospaceInstrumentPreset[]) => {
+    setPresets(updated);
+    try {
+      localStorage.setItem('tus_instrument_presets_v2', JSON.stringify(updated));
+    } catch (e) {}
+  };
+
+  // Delete preset
+  const handleDeletePreset = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = presets.filter((p) => p.id !== id);
+    savePresetsToStorage(updated);
+  };
+
+  // Reset presets to factory defaults
+  const handleResetDefaultPresets = () => {
+    savePresetsToStorage(DEFAULT_AEROSPACE_PRESETS);
+  };
+
+  // Save current active instrument as preset
+  const handleSaveCurrentAsPreset = () => {
+    const label = newPresetLabel.trim() || `${instrument.manufacturer} ${instrument.model || 'Recorder'}`;
+    const newPreset: AerospaceInstrumentPreset = {
+      id: `preset-${Date.now()}`,
+      label,
+      instrument: {
+        manufacturer: instrument.manufacturer,
+        model: instrument.model,
+        serialNumber: instrument.serialNumber,
+        assetTag: instrument.assetTag,
+        equipmentType: instrument.equipmentType,
+        calibrationStandard: instrument.calibrationStandard,
+        traceabilityNumber: instrument.traceabilityNumber,
+        calibrationLab: instrument.calibrationLab,
+        maxPermissibleError: instrument.maxPermissibleError,
+        calibratedByTechnician: instrument.calibratedByTechnician,
+      },
+    };
+    savePresetsToStorage([...presets, newPreset]);
+    setNewPresetLabel('');
+    setSaveModalOpen(false);
+  };
+
+  // Create custom preset from scratch
+  const handleCreateCustomPreset = () => {
+    if (!customForm.label.trim()) return;
+    const newPreset: AerospaceInstrumentPreset = {
+      id: `preset-${Date.now()}`,
+      label: customForm.label.trim(),
+      instrument: {
+        manufacturer: customForm.manufacturer || 'Aerospace Instruments',
+        model: customForm.model || 'Custom Recorder',
+        serialNumber: customForm.serialNumber || 'SN-AERO-' + Math.floor(1000 + Math.random() * 9000),
+        assetTag: customForm.assetTag,
+        equipmentType: customForm.equipmentType,
+        calibrationStandard: customForm.calibrationStandard,
+        traceabilityNumber: customForm.traceabilityNumber,
+        calibrationLab: customForm.calibrationLab,
+        maxPermissibleError: customForm.maxPermissibleError,
+      },
+    };
+    savePresetsToStorage([...presets, newPreset]);
+    setCustomPresetModalOpen(false);
+    setCustomForm({
+      label: '',
+      manufacturer: '',
+      model: '',
+      serialNumber: '',
+      assetTag: '',
+      equipmentType: 'TUS Data Acquisition System',
+      calibrationLab: 'UKAS / NIST Accredited Metrology Lab',
+      traceabilityNumber: 'UKAS-CERT-' + Math.floor(10000 + Math.random() * 90000),
+      calibrationStandard: 'ISO/IEC 17025 Accredited Calibration',
+      maxPermissibleError: 0.2,
+    });
+  };
+
+  // Apply a preset
+  const applyPresetItem = (preset: AerospaceInstrumentPreset) => {
     const todayStr = new Date().toISOString().split('T')[0];
     const sixMonthsLater = new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString().split('T')[0];
-    const oneYearLater = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().split('T')[0];
 
-    if (presetKey === 'yokogawa') {
-      onUpdateInstrument({
-        ...instrument,
-        manufacturer: 'Yokogawa Metrology UK',
-        model: 'DX2030 Paperless Advanced TUS Recorder',
-        serialNumber: 'YK-884920-TUS',
-        assetTag: 'AST-AERO-042',
-        equipmentType: 'Paperless Video Graphic TUS Data Logger',
-        calibrationDate: todayStr,
-        calibrationDueDate: sixMonthsLater,
-        traceabilityNumber: 'UKAS-CAL-74921-2026',
-        calibrationLab: 'Trescal UK Metrology Services (UKAS Accredited Lab #0123)',
-        calibrationStandard: 'UKAS / ISO/IEC 17025 Accredited Calibration',
-        maxPermissibleError: 0.2,
-        calibratedByTechnician: 'D. Edwards (Senior Calibration Metrologist)',
-      });
-    } else if (presetKey === 'eurotherm') {
-      onUpdateInstrument({
-        ...instrument,
-        manufacturer: 'Eurotherm by Schneider Electric',
-        model: 'Nanodac Multi-Channel Precision TUS Recorder',
-        serialNumber: 'ET-554109-ND',
-        assetTag: 'AST-AERO-088',
-        equipmentType: 'Digital Graphic Recorder / Controller',
-        calibrationDate: todayStr,
-        calibrationDueDate: sixMonthsLater,
-        traceabilityNumber: 'NIST-CAL-99382-2026',
-        calibrationLab: 'Eurotherm UKAS Calibration Laboratory',
-        calibrationStandard: 'ISO/IEC 17025 Accredited Laboratory',
-        maxPermissibleError: 0.25,
-        calibratedByTechnician: 'R. Hall (Certified Pyrometry Inspector)',
-      });
-    } else if (presetKey === 'fluke') {
-      onUpdateInstrument({
-        ...instrument,
-        manufacturer: 'Fluke Calibration',
-        model: 'Hydra Series III 2638A Precision Data Acquisition System',
-        serialNumber: 'FLK-410982-HY',
-        assetTag: 'AST-MET-115',
-        equipmentType: 'High-Accuracy Data Acquisition System',
-        calibrationDate: todayStr,
-        calibrationDueDate: oneYearLater,
-        traceabilityNumber: 'UKAS-FLK-88123-2026',
-        calibrationLab: 'Fluke UK Service & Metrology Centre',
-        calibrationStandard: 'UKAS National Physical Laboratory (NPL) Traceable',
-        maxPermissibleError: 0.18,
-        calibratedByTechnician: 'S. Jenkins (Metrology Specialist)',
-      });
-    } else if (presetKey === 'keysight') {
-      onUpdateInstrument({
-        ...instrument,
-        manufacturer: 'Keysight Technologies',
-        model: 'DAQ970A Precision Metrology Data Acquisition System',
-        serialNumber: 'MY-59002341',
-        assetTag: 'AST-MET-204',
-        equipmentType: '6½-Digit Multimeter & Multiplexer DAS',
-        calibrationDate: todayStr,
-        calibrationDueDate: oneYearLater,
-        traceabilityNumber: 'NIST-821-24910-KEY',
-        calibrationLab: 'Keysight Accredited Metrology Laboratory',
-        calibrationStandard: 'ANSI/NCSL Z540-1-1994 Traceable',
-        maxPermissibleError: 0.15,
-        calibratedByTechnician: 'M. Vance (Lead Pyrometry Metrologist)',
-      });
-    }
+    onUpdateInstrument({
+      ...instrument,
+      ...preset.instrument,
+      calibrationDate: instrument.calibrationDate || todayStr,
+      calibrationDueDate: instrument.calibrationDueDate || sixMonthsLater,
+      maxPermissibleError: preset.instrument.maxPermissibleError ?? instrument.maxPermissibleError,
+    });
   };
 
   // Secondary Standards Handlers
@@ -285,32 +420,236 @@ export const TestEquipmentManager: React.FC<TestEquipmentManagerProps> = ({
         </div>
       </div>
 
-      {/* 2. Popular TUS Recorder Presets */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+      {/* 2. Popular TUS Recorder Presets (Fully Customizable with Add/Delete) */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            Load Popular Aerospace Test Instrument Presets:
+            Load Popular Aerospace Test Instrument Presets ({presets.length} Presets Available):
           </span>
-          <span className="text-xs text-slate-500">Auto-fills specifications & traceability details</span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {[
-            { id: 'yokogawa', label: 'Yokogawa DX2030 (UKAS Accredited)' },
-            { id: 'eurotherm', label: 'Eurotherm Nanodac High-Precision DAS' },
-            { id: 'fluke', label: 'Fluke Hydra Series III 2638A' },
-            { id: 'keysight', label: 'Keysight DAQ970A Precision DAS' },
-          ].map((preset) => (
+          <div className="flex items-center gap-2">
             <button
-              key={preset.id}
-              onClick={() => applyPreset(preset.id)}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-cyan-500/60 text-xs text-slate-200 transition-all font-medium cursor-pointer"
+              onClick={() => {
+                setNewPresetLabel(`${instrument.manufacturer} ${instrument.model || 'Recorder'}`);
+                setSaveModalOpen(true);
+              }}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/80 text-emerald-300 text-xs font-medium transition-colors cursor-pointer"
+              title="Save the currently filled equipment details as a reusable preset"
             >
-              {preset.label}
+              <Save className="w-3 h-3" />
+              <span>Save Current as Preset</span>
             </button>
+
+            <button
+              onClick={() => setCustomPresetModalOpen(true)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-700/80 text-cyan-300 text-xs font-medium transition-colors cursor-pointer"
+              title="Add a custom test instrument preset"
+            >
+              <Plus className="w-3 h-3" />
+              <span>Add Custom Preset</span>
+            </button>
+
+            <button
+              onClick={handleResetDefaultPresets}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-slate-200 text-xs transition-colors cursor-pointer"
+              title="Reset presets list to standard factory defaults"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset Defaults</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Preset Chips */}
+        <div className="flex flex-wrap gap-2 pt-1">
+          {presets.map((preset) => (
+            <div
+              key={preset.id}
+              className="group flex items-center rounded-lg bg-slate-800 hover:bg-slate-750 border border-slate-700 hover:border-cyan-500/60 transition-all overflow-hidden shadow-sm"
+            >
+              <button
+                onClick={() => applyPresetItem(preset)}
+                className="px-3 py-1.5 text-xs text-slate-200 hover:text-cyan-300 font-medium transition-colors cursor-pointer text-left"
+                title={`Click to load ${preset.label}`}
+              >
+                {preset.label}
+              </button>
+              <button
+                onClick={(e) => handleDeletePreset(preset.id, e)}
+                className="px-2 py-1.5 text-slate-500 hover:text-red-400 hover:bg-red-950/60 transition-colors border-l border-slate-700/60 cursor-pointer"
+                title={`Delete preset "${preset.label}"`}
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
           ))}
+          {presets.length === 0 && (
+            <div className="text-xs text-slate-500 italic py-1">
+              No presets available. Click "Reset Defaults" or "Save Current as Preset" to add items.
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Modal: Save Current Instrument as Preset */}
+      {saveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h4 className="font-bold text-white text-sm flex items-center gap-2">
+                <Save className="w-4 h-4 text-emerald-400" />
+                <span>Save Current Instrument as Preset</span>
+              </h4>
+              <button
+                onClick={() => setSaveModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-300 mb-1 font-medium">Preset Display Label</label>
+                <input
+                  type="text"
+                  value={newPresetLabel}
+                  onChange={(e) => setNewPresetLabel(e.target.value)}
+                  placeholder="e.g. Yokogawa DX2030 (Shop 3 Calibrated)"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-cyan-500 focus:outline-none"
+                  autoFocus
+                />
+              </div>
+              <div className="bg-slate-950 rounded-lg p-3 text-[11px] font-mono text-slate-400 space-y-1">
+                <div>Manufacturer: <span className="text-slate-200">{instrument.manufacturer || 'N/A'}</span></div>
+                <div>Model: <span className="text-slate-200">{instrument.model || 'N/A'}</span></div>
+                <div>Serial: <span className="text-slate-200">{instrument.serialNumber || 'N/A'}</span></div>
+                <div>MPE: <span className="text-slate-200">±{instrument.maxPermissibleError} {tempUnit}</span></div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => setSaveModalOpen(false)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveCurrentAsPreset}
+                className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-sm"
+              >
+                Save Preset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Add Custom Preset */}
+      {customPresetModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h4 className="font-bold text-white text-sm flex items-center gap-2">
+                <Plus className="w-4 h-4 text-cyan-400" />
+                <span>Create New Test Instrument Preset</span>
+              </h4>
+              <button
+                onClick={() => setCustomPresetModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="col-span-2">
+                <label className="block text-slate-300 mb-1 font-medium">Preset Display Label *</label>
+                <input
+                  type="text"
+                  value={customForm.label}
+                  onChange={(e) => setCustomForm({ ...customForm, label: e.target.value })}
+                  placeholder="e.g. Fluke 2638A Hydra Series (UKAS Calibrated)"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-white focus:border-cyan-500 focus:outline-none"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Manufacturer</label>
+                <input
+                  type="text"
+                  value={customForm.manufacturer}
+                  onChange={(e) => setCustomForm({ ...customForm, manufacturer: e.target.value })}
+                  placeholder="e.g. Fluke Calibration"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-white focus:border-cyan-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Model</label>
+                <input
+                  type="text"
+                  value={customForm.model}
+                  onChange={(e) => setCustomForm({ ...customForm, model: e.target.value })}
+                  placeholder="e.g. Hydra 2638A"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-white focus:border-cyan-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Serial Number</label>
+                <input
+                  type="text"
+                  value={customForm.serialNumber}
+                  onChange={(e) => setCustomForm({ ...customForm, serialNumber: e.target.value })}
+                  placeholder="e.g. FLK-992144"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-white focus:border-cyan-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">MPE Limit (± {tempUnit})</label>
+                <input
+                  type="number"
+                  step="0.05"
+                  value={customForm.maxPermissibleError}
+                  onChange={(e) => setCustomForm({ ...customForm, maxPermissibleError: parseFloat(e.target.value) || 0.2 })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-white font-mono focus:border-cyan-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <label className="block text-slate-400 mb-1">Calibration Laboratory & Standard</label>
+                <input
+                  type="text"
+                  value={customForm.calibrationLab}
+                  onChange={(e) => setCustomForm({ ...customForm, calibrationLab: e.target.value })}
+                  placeholder="e.g. UKAS Accredited Metrology Laboratory"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-white focus:border-cyan-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => setCustomPresetModalOpen(false)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateCustomPreset}
+                disabled={!customForm.label.trim()}
+                className="px-4 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold text-xs shadow-sm cursor-pointer"
+              >
+                Add Preset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 3. Primary TUS Data Acquisition Instrument Inputs */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4">

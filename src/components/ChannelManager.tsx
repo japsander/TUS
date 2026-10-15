@@ -224,25 +224,18 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
           <div className="flex items-center bg-slate-950 border border-slate-700/80 rounded-xl p-1 text-xs">
             <span className="px-2 text-slate-400 font-medium">Standard Layouts:</span>
             <button
-              onClick={() => handleResetStandard(21)}
-              className="px-2.5 py-1 rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white font-mono font-bold transition-colors cursor-pointer"
-              title="Exact 21-Point Web Pattern from Picture 1 (AMS 2750 Standard)"
-            >
-              21-Point (Picture 1)
-            </button>
-            <button
               onClick={() => handleResetStandard(9)}
-              className="px-2.5 py-1 rounded-lg hover:bg-slate-800 text-cyan-300 font-mono transition-colors cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white font-mono font-bold transition-colors cursor-pointer"
               title="Standard 9-Point Pattern (8 Corners + 1 Center per AMS 2750 Rev H Fig 1)"
             >
-              9-Point
+              9-Point (Corner + Center)
             </button>
             <button
               onClick={() => handleResetStandard(14)}
               className="px-2.5 py-1 rounded-lg hover:bg-slate-800 text-cyan-300 font-mono transition-colors cursor-pointer"
-              title="14-Point Pattern (9 Corners/Center + Face Centers)"
+              title="14-Point Pattern (8 Corners + 1 Center + 5 Face Centers)"
             >
-              14-Point
+              14-Point (Balanced)
             </button>
           </div>
 

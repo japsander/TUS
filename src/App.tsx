@@ -867,8 +867,10 @@ export default function App() {
                 furnaceClass={meta.furnaceClass}
                 tempUnit={tempUnit}
                 instrumentError={instrument.maxPermissibleError}
+                meta={meta}
                 onUpdateSetpoints={setSetpoints}
                 onUpdateChannels={setChannels}
+                onUpdateMeta={setMeta}
               />
             )}
 

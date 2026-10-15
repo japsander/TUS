@@ -610,6 +610,51 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
             />
           </g>
 
+          {/* Feedthrough Gland or Under-Door Threshold Seal Symbol */}
+          {(() => {
+            const isUnderDoor = chamber.feedthroughWall === 'under_door';
+            const ft = isUnderDoor
+              ? { x: 0, y: 15, z: chamber.width / 2 }
+              : chamber.feedthroughPos || { x: chamber.length, y: chamber.height * 0.75, z: chamber.width / 2 };
+            const ft2D = project3Dto2D(ft.x, ft.y, ft.z);
+
+            return (
+              <g transform={`translate(${ft2D.x}, ${ft2D.y})`}>
+                {isUnderDoor ? (
+                  <>
+                    <rect
+                      x="-18"
+                      y="-5"
+                      width="36"
+                      height="10"
+                      rx="3"
+                      fill="#D97706"
+                      stroke="#92400E"
+                      strokeWidth="1.5"
+                    />
+                    <text
+                      x="0"
+                      y="18"
+                      textAnchor="middle"
+                      fill="#D97706"
+                      fontSize="9.5"
+                      fontWeight="bold"
+                    >
+                      UNDER-DOOR FEEDTHROUGH SEAL
+                    </text>
+                  </>
+                ) : (
+                  <>
+                    <circle cx="0" cy="0" r="6" fill="#F59E0B" stroke="#B45309" strokeWidth="1.8" />
+                    <text x="12" y="4" fill="#D97706" fontSize="9.5" fontWeight="bold">
+                      TUS CABLE GLAND
+                    </text>
+                  </>
+                )}
+              </g>
+            );
+          })()}
+
           {/* ----------------------------------------------------------- */}
           {/* 5. DIMENSION ARROWS & CALLOUTS (a, b from Picture 1)        */}
           {/* ----------------------------------------------------------- */}

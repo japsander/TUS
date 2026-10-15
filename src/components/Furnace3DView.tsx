@@ -8,6 +8,7 @@ import {
   ThermocoupleChannel,
   DimUnit,
 } from '../types/tus';
+import { getLogicalWireRiggingSchedule } from '../utils/ams2750';
 import {
   Camera,
   Layers,
@@ -20,6 +21,7 @@ import {
   Cable,
   Box,
   Ruler,
+  GitCommit,
 } from 'lucide-react';
 
 interface Furnace3DViewProps {
@@ -51,6 +53,7 @@ export const Furnace3DView: React.FC<Furnace3DViewProps> = ({
 
   // View settings toggles
   const [showWires, setShowWires] = useState(true);
+  const [showRiggingWeb, setShowRiggingWeb] = useState(true);
   const [showQWZ, setShowQWZ] = useState(true);
   const [showElements, setShowElements] = useState(true);
   const [showDimensions, setShowDimensions] = useState(true);
@@ -66,6 +69,7 @@ export const Furnace3DView: React.FC<Furnace3DViewProps> = ({
     dimUnit,
     selectedChannelId,
     showWires,
+    showRiggingWeb,
     showQWZ,
     showElements,
     showDimensions,
@@ -80,12 +84,13 @@ export const Furnace3DView: React.FC<Furnace3DViewProps> = ({
       dimUnit,
       selectedChannelId,
       showWires,
+      showRiggingWeb,
       showQWZ,
       showElements,
       showDimensions,
       ghostWalls,
     };
-  }, [chamber, qwz, channels, dimUnit, selectedChannelId, showWires, showQWZ, showElements, showDimensions, ghostWalls]);
+  }, [chamber, qwz, channels, dimUnit, selectedChannelId, showWires, showRiggingWeb, showQWZ, showElements, showDimensions, ghostWalls]);
 
   // Capture canvas high-res image
   const captureSnapshot = useCallback(() => {
@@ -394,26 +399,46 @@ export const Furnace3DView: React.FC<Furnace3DViewProps> = ({
     chamberGroup.add(doorMesh);
 
     // ----------------------------------------------------
-    // 2. FEEDTHROUGH CABLE PENETRATION GLAND
+    // 2. FEEDTHROUGH CABLE PENETRATION GLAND / UNDER-DOOR SEAL
     // ----------------------------------------------------
-    const ftPos = chamber.feedthroughPos || { x: cL, y: cH * 0.75, z: cW * 0.5 };
+    const isUnderDoor = chamber.feedthroughWall === 'under_door';
+    const ftPos = isUnderDoor
+      ? { x: 0, y: 15, z: chamber.width / 2 }
+      : chamber.feedthroughPos || { x: cL, y: cH * 0.75, z: cW * 0.5 };
     const feedthroughLocal = toLocal(ftPos.x, ftPos.y, ftPos.z);
 
-    const glandGeo = new THREE.CylinderGeometry(3.5, 4, 6, 16);
-    const glandMat = new THREE.MeshStandardMaterial({
-      color: 0xf59e0b, // Amber brass gland
-      metalness: 0.9,
-      roughness: 0.2,
-    });
-    const gland = new THREE.Mesh(glandGeo, glandMat);
-    gland.position.copy(feedthroughLocal);
-    gland.rotation.z = Math.PI / 2;
-    chamberGroup.add(gland);
+    if (isUnderDoor) {
+      // Flat threshold penetration seal plate along front door hearth
+      const glandGeo = new THREE.BoxGeometry(4, 3, Math.min(cW * 0.4, 30));
+      const glandMat = new THREE.MeshStandardMaterial({
+        color: 0xf59e0b,
+        metalness: 0.9,
+        roughness: 0.2,
+      });
+      const gland = new THREE.Mesh(glandGeo, glandMat);
+      gland.position.set(-cL / 2, -cH / 2 + 1.5, 0);
+      chamberGroup.add(gland);
 
-    // Feedthrough Label Sprite
-    const glandLabel = createTextSprite('TUS CABLE GLAND', '#d97706');
-    glandLabel.position.copy(feedthroughLocal).add(new THREE.Vector3(0, 6, 0));
-    chamberGroup.add(glandLabel);
+      const glandLabel = createTextSprite('UNDER-DOOR FEEDTHROUGH SEAL', '#d97706');
+      glandLabel.position.set(-cL / 2, -cH / 2 + 8, 0);
+      chamberGroup.add(glandLabel);
+    } else {
+      const glandGeo = new THREE.CylinderGeometry(3.5, 4, 6, 16);
+      const glandMat = new THREE.MeshStandardMaterial({
+        color: 0xf59e0b, // Amber brass gland
+        metalness: 0.9,
+        roughness: 0.2,
+      });
+      const gland = new THREE.Mesh(glandGeo, glandMat);
+      gland.position.copy(feedthroughLocal);
+      gland.rotation.z = Math.PI / 2;
+      chamberGroup.add(gland);
+
+      // Feedthrough Label Sprite
+      const glandLabel = createTextSprite('TUS CABLE GLAND', '#d97706');
+      glandLabel.position.copy(feedthroughLocal).add(new THREE.Vector3(0, 6, 0));
+      chamberGroup.add(glandLabel);
+    }
 
     // ----------------------------------------------------
     // 3. HEATING ELEMENTS (Coils along Left/Right walls)
@@ -628,6 +653,79 @@ export const Furnace3DView: React.FC<Furnace3DViewProps> = ({
 
     group.add(sensorGroup);
 
+    // ----------------------------------------------------
+    // 6. PHYSICAL RIGGING WIRE WEB (Opposite-Corner 3D Tension Web & Boundary Rails)
+    // ----------------------------------------------------
+    if (showRiggingWeb) {
+      const riggingGroup = new THREE.Group();
+      riggingGroup.name = 'rigging-web-group';
+
+      const plan = getLogicalWireRiggingSchedule(channels, dimUnit);
+
+      // Material for 4 Main 3D Cross-Body Diagonals (High-Visibility Cyan tension cables)
+      const diagMat = new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        metalness: 0.8,
+        roughness: 0.2,
+        emissive: 0x0284c7,
+        emissiveIntensity: 0.4,
+      });
+
+      // Material for 12 perimeter frame boundary cables
+      const frameMat = new THREE.MeshStandardMaterial({
+        color: 0x94a3b8,
+        metalness: 0.85,
+        roughness: 0.3,
+      });
+
+      // Render 4 opposite-corner continuous diagonals (passing through center hub)
+      plan.oppositeCornerDiagonals.forEach((diag) => {
+        const ptA = toLocal(diag.cornerA.x, diag.cornerA.y, diag.cornerA.z);
+        const ptCenter = toLocal(diag.center.x, diag.center.y, diag.center.z);
+        const ptB = toLocal(diag.cornerB.x, diag.cornerB.y, diag.cornerB.z);
+
+        const curve = new THREE.CatmullRomCurve3([ptA, ptCenter, ptB]);
+        const tubeGeo = new THREE.TubeGeometry(curve, 24, 0.45, 8, false);
+        const tube = new THREE.Mesh(tubeGeo, diagMat);
+        riggingGroup.add(tube);
+      });
+
+      // Central Spider Hub Ring at center TC
+      if (plan.oppositeCornerDiagonals[0]?.center) {
+        const centerCh = plan.oppositeCornerDiagonals[0].center;
+        const centerPos = toLocal(centerCh.x, centerCh.y, centerCh.z);
+        const hubGeo = new THREE.TorusGeometry(3.5, 0.6, 12, 24);
+        const hubMat = new THREE.MeshStandardMaterial({
+          color: 0xf59e0b,
+          metalness: 0.9,
+          roughness: 0.2,
+          emissive: 0xd97706,
+          emissiveIntensity: 0.5,
+        });
+        const hub = new THREE.Mesh(hubGeo, hubMat);
+        hub.position.copy(centerPos);
+        hub.rotation.x = Math.PI / 2;
+        riggingGroup.add(hub);
+      }
+
+      // Render 12 perimeter frame cables and depth rails
+      plan.cables
+        .filter((c) => c.category === 'perimeter-frame' || c.category === 'depth-rail')
+        .forEach((c) => {
+          const fromCh = channels.find((ch) => ch.channelNumber === c.fromChannelNum);
+          const toCh = channels.find((ch) => ch.channelNumber === c.toChannelNum);
+          if (fromCh && toCh) {
+            const p1 = toLocal(fromCh.x, fromCh.y, fromCh.z);
+            const p2 = toLocal(toCh.x, toCh.y, toCh.z);
+            const curve = new THREE.LineCurve3(p1, p2);
+            const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 8, 0.28, 6, false), frameMat);
+            riggingGroup.add(tube);
+          }
+        });
+
+      group.add(riggingGroup);
+    }
+
     // Notify capture ready after geometry render
     if (rendererRef.current && sceneRef.current && cameraRef.current && onExportImageReady) {
       rendererRef.current.render(sceneRef.current, cameraRef.current);
@@ -641,6 +739,7 @@ export const Furnace3DView: React.FC<Furnace3DViewProps> = ({
     dimUnit,
     selectedChannelId,
     showWires,
+    showRiggingWeb,
     showQWZ,
     showElements,
     showDimensions,
@@ -801,6 +900,19 @@ export const Furnace3DView: React.FC<Furnace3DViewProps> = ({
           >
             <Cable className="w-3.5 h-3.5" />
             <span>TC Wires</span>
+          </button>
+
+          <button
+            onClick={() => setShowRiggingWeb(!showRiggingWeb)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs transition-colors cursor-pointer ${
+              showRiggingWeb
+                ? 'bg-blue-950/60 border-blue-700/60 text-blue-300 font-semibold'
+                : 'bg-slate-800/40 border-slate-700/40 text-slate-500'
+            }`}
+            title="Toggle Physical Opposite-Corner 3D Wire Rigging Web & Frame Rails"
+          >
+            <GitCommit className="w-3.5 h-3.5" />
+            <span>Rigging Web</span>
           </button>
 
           <button

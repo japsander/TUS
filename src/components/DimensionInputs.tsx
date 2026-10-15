@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FurnaceChamber,
   QualifiedWorkZone,
@@ -54,6 +54,58 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
   onNavigateTab,
 }) => {
   const [autoCenter, setAutoCenter] = useState<boolean>(false);
+
+  // Local string inputs for smooth, uninterrupted backspacing and typing
+  const [chamberInputs, setChamberInputs] = useState({
+    length: String(chamber.length),
+    width: String(chamber.width),
+    height: String(chamber.height),
+  });
+
+  const [qwzInputs, setQwzInputs] = useState({
+    length: String(qwz.length),
+    width: String(qwz.width),
+    height: String(qwz.height),
+    offsetLeft: String(qwz.offsetLeft),
+    offsetRight: String(qwz.offsetRight),
+    offsetFront: String(qwz.offsetFront),
+    offsetRear: String(qwz.offsetRear),
+    offsetFloor: String(qwz.offsetFloor),
+    offsetCeiling: String(qwz.offsetCeiling),
+  });
+
+  // Sync local inputs when parent chamber/qwz props change (e.g., presets)
+  useEffect(() => {
+    setChamberInputs({
+      length: String(chamber.length),
+      width: String(chamber.width),
+      height: String(chamber.height),
+    });
+  }, [chamber.length, chamber.width, chamber.height]);
+
+  useEffect(() => {
+    setQwzInputs({
+      length: String(qwz.length),
+      width: String(qwz.width),
+      height: String(qwz.height),
+      offsetLeft: String(qwz.offsetLeft),
+      offsetRight: String(qwz.offsetRight),
+      offsetFront: String(qwz.offsetFront),
+      offsetRear: String(qwz.offsetRear),
+      offsetFloor: String(qwz.offsetFloor),
+      offsetCeiling: String(qwz.offsetCeiling),
+    });
+  }, [
+    qwz.length,
+    qwz.width,
+    qwz.height,
+    qwz.offsetLeft,
+    qwz.offsetRight,
+    qwz.offsetFront,
+    qwz.offsetRear,
+    qwz.offsetFloor,
+    qwz.offsetCeiling,
+  ]);
 
   const volumeM3 = calculateVolumeInM3(qwz, dimUnit);
   const volumeCuFt = calculateVolumeInCuFt(qwz, dimUnit);
@@ -197,6 +249,54 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
     onUpdateQWZ(centeredQWZ);
   };
 
+  // Controlled input typing handlers for chamber
+  const onChamberInputChange = (field: 'length' | 'width' | 'height', val: string) => {
+    setChamberInputs((prev) => ({ ...prev, [field]: val }));
+    const num = parseFloat(val);
+    if (!isNaN(num) && num > 0) {
+      handleChamberChange(field, num);
+    }
+  };
+
+  const onChamberInputBlur = (field: 'length' | 'width' | 'height') => {
+    const num = parseFloat(chamberInputs[field]);
+    if (isNaN(num) || num <= 0) {
+      setChamberInputs((prev) => ({ ...prev, [field]: String(chamber[field]) }));
+    }
+  };
+
+  // Controlled input typing handlers for QWZ
+  const onQwzInputChange = (field: 'length' | 'width' | 'height', val: string) => {
+    setQwzInputs((prev) => ({ ...prev, [field]: val }));
+    const num = parseFloat(val);
+    if (!isNaN(num) && num > 0) {
+      handleQWZChange(field, num);
+    }
+  };
+
+  const onQwzInputBlur = (field: 'length' | 'width' | 'height') => {
+    const num = parseFloat(qwzInputs[field]);
+    if (isNaN(num) || num <= 0) {
+      setQwzInputs((prev) => ({ ...prev, [field]: String(qwz[field]) }));
+    }
+  };
+
+  // Controlled input typing handlers for offsets/clearances
+  const onOffsetInputChange = (field: keyof QualifiedWorkZone, val: string) => {
+    setQwzInputs((prev) => ({ ...prev, [field]: val }));
+    const num = parseFloat(val);
+    if (!isNaN(num) && num >= 0) {
+      handleOffsetChange(field, String(num));
+    }
+  };
+
+  const onOffsetInputBlur = (field: keyof QualifiedWorkZone) => {
+    const num = parseFloat(qwzInputs[field] as string);
+    if (isNaN(num) || num < 0) {
+      setQwzInputs((prev) => ({ ...prev, [field]: String(qwz[field]) }));
+    }
+  };
+
   // Presets for instrument
   const applyInstrumentPreset = (presetKey: string) => {
     if (!onUpdateInstrument || !instrument) return;
@@ -337,8 +437,9 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
                   type="number"
                   min="1"
                   step={dimUnit === 'mm' ? '10' : '0.5'}
-                  value={chamber.length}
-                  onChange={(e) => handleChamberChange('length', e.target.value)}
+                  value={chamberInputs.length}
+                  onChange={(e) => onChamberInputChange('length', e.target.value)}
+                  onBlur={() => onChamberInputBlur('length')}
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
                 />
                 <span className="absolute right-2.5 top-2.5 text-xs text-slate-500 font-mono">
@@ -356,8 +457,9 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
                   type="number"
                   min="1"
                   step={dimUnit === 'mm' ? '10' : '0.5'}
-                  value={chamber.width}
-                  onChange={(e) => handleChamberChange('width', e.target.value)}
+                  value={chamberInputs.width}
+                  onChange={(e) => onChamberInputChange('width', e.target.value)}
+                  onBlur={() => onChamberInputBlur('width')}
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
                 />
                 <span className="absolute right-2.5 top-2.5 text-xs text-slate-500 font-mono">
@@ -375,8 +477,9 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
                   type="number"
                   min="1"
                   step={dimUnit === 'mm' ? '10' : '0.5'}
-                  value={chamber.height}
-                  onChange={(e) => handleChamberChange('height', e.target.value)}
+                  value={chamberInputs.height}
+                  onChange={(e) => onChamberInputChange('height', e.target.value)}
+                  onBlur={() => onChamberInputBlur('height')}
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
                 />
                 <span className="absolute right-2.5 top-2.5 text-xs text-slate-500 font-mono">
@@ -397,7 +500,7 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
                 onChange={(e) =>
                   onUpdateChamber({ ...chamber, shape: e.target.value as 'rectangular' | 'cylindrical' })
                 }
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
               >
                 <option value="rectangular">Rectangular Box / Car-Bottom</option>
                 <option value="cylindrical">Cylindrical Retort / Pit</option>
@@ -420,7 +523,7 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
                   else if (wall === 'under_door') ftPos = { x: 0, y: 15, z: chamber.width / 2 };
                   onUpdateChamber({ ...chamber, feedthroughWall: wall, feedthroughPos: ftPos });
                 }}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
               >
                 <option value="under_door">Under Door / Front Threshold Seal</option>
                 <option value="rear">Rear Wall Penetration Port</option>
@@ -457,8 +560,9 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
                   type="number"
                   min="1"
                   step={dimUnit === 'mm' ? '10' : '0.5'}
-                  value={qwz.length}
-                  onChange={(e) => handleQWZChange('length', e.target.value)}
+                  value={qwzInputs.length}
+                  onChange={(e) => onQwzInputChange('length', e.target.value)}
+                  onBlur={() => onQwzInputBlur('length')}
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 font-mono focus:border-emerald-500 focus:outline-none"
                 />
                 <span className="absolute right-2.5 top-2.5 text-xs text-slate-500 font-mono">
@@ -476,8 +580,9 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
                   type="number"
                   min="1"
                   step={dimUnit === 'mm' ? '10' : '0.5'}
-                  value={qwz.width}
-                  onChange={(e) => handleQWZChange('width', e.target.value)}
+                  value={qwzInputs.width}
+                  onChange={(e) => onQwzInputChange('width', e.target.value)}
+                  onBlur={() => onQwzInputBlur('width')}
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 font-mono focus:border-emerald-500 focus:outline-none"
                 />
                 <span className="absolute right-2.5 top-2.5 text-xs text-slate-500 font-mono">
@@ -495,8 +600,9 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
                   type="number"
                   min="1"
                   step={dimUnit === 'mm' ? '10' : '0.5'}
-                  value={qwz.height}
-                  onChange={(e) => handleQWZChange('height', e.target.value)}
+                  value={qwzInputs.height}
+                  onChange={(e) => onQwzInputChange('height', e.target.value)}
+                  onBlur={() => onQwzInputBlur('height')}
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 font-mono focus:border-emerald-500 focus:outline-none"
                 />
                 <span className="absolute right-2.5 top-2.5 text-xs text-slate-500 font-mono">
@@ -534,7 +640,7 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
                     <Info className="w-3.5 h-3.5" />
                     <span>AMS 2750 Rev H Table 11 Mathematical Derivation:</span>
                   </div>
-                  <div>• Work Zone Volume = {qwz.length} × {qwz.width} × {qwz.height} mm = <strong className="text-white">{volumeM3.toFixed(3)} m³</strong> ({volumeCuFt.toFixed(1)} ft³)</div>
+                  <div>• Work Zone Volume = {qwz.length} × {qwz.width} × {qwz.height} {dimUnit} = <strong className="text-white">{volumeM3.toFixed(3)} m³</strong> ({volumeCuFt.toFixed(1)} ft³)</div>
                   <div>• Baseline Requirement: First 6.4 m³ (225 ft³) = <strong className="text-white">9 sensors</strong> (8 corners + 1 center)</div>
                   <div>
                     • Excess Volume: {volumeM3.toFixed(3)} m³ − 6.4 m³ = <strong className="text-white">{(Math.max(0, volumeM3 - 6.4)).toFixed(3)} m³</strong>
@@ -546,7 +652,7 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
                     Total Required Minimum = 9 + {additionalSensors} = {minSensors} Sensors (AMS 2750 Rev H Table 11)
                   </div>
                   <div className="text-slate-400 font-sans text-[11px] pt-1">
-                    <em>Aerospace Engineering Note:</em> While <strong>{minSensors} sensors</strong> is 100% compliant with AMS 2750 Rev H Table 11, placing an odd number across a 6-sided box furnace creates asymmetry. Most Nadcap-accredited heat treaters use <strong>14 sensors</strong> (symmetrical 6 faces) or <strong>21 sensors</strong> (Picture 1 symmetrical web).
+                    <em>Aerospace Engineering Note:</em> While <strong>{minSensors} sensors</strong> is 100% compliant with AMS 2750 Rev H Table 11, placing an odd number across a 6-sided box furnace creates asymmetry. Most Nadcap-accredited heat treaters use <strong>14 sensors</strong> (symmetrical 6 faces).
                   </div>
                 </div>
 
@@ -557,7 +663,7 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
               </div>
             </div>
 
-            {/* Quick Action Buttons to Fit Wire Grid or Set Sensor Counts */}
+            {/* Quick Action Buttons to Fit Wire Grid or Set Sensor Counts (21 sensors preset removed) */}
             <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
               <button
                 onClick={() => onFitSensorsToQWZ()}
@@ -583,14 +689,6 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
               >
                 Set 14 Sensors (Balanced 6-Face)
               </button>
-
-              <button
-                onClick={() => onFitSensorsToQWZ(21)}
-                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-mono font-medium text-xs border border-slate-700 cursor-pointer"
-                title="Generate 21-point symmetrical web pattern as shown in Picture 1"
-              >
-                Set 21 Sensors (Picture 1 Full Web)
-              </button>
             </div>
           </div>
         </div>
@@ -610,19 +708,140 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
           </span>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-        <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={autoCenter}
-                onChange={(e) => setAutoCenter(e.target.checked)}
-                className="rounded border-slate-700 text-blue-600 focus:ring-0 focus:outline-none"
-              />
-              <span>Auto-adjust clearances to keep QWZ centered when chamber dimensions change</span>
+        {/* 6 Clearances Input Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              Left Wall Clearance
             </label>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                step={dimUnit === 'mm' ? '10' : '0.5'}
+                value={qwzInputs.offsetLeft}
+                onChange={(e) => onOffsetInputChange('offsetLeft', e.target.value)}
+                onBlur={() => onOffsetInputBlur('offsetLeft')}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-100 font-mono focus:border-amber-500 focus:outline-none"
+              />
+              <span className="absolute right-2 top-2 text-[11px] text-slate-500 font-mono">
+                {dimUnit}
+              </span>
+            </div>
           </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              Right Wall Clearance
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                step={dimUnit === 'mm' ? '10' : '0.5'}
+                value={qwzInputs.offsetRight}
+                onChange={(e) => onOffsetInputChange('offsetRight', e.target.value)}
+                onBlur={() => onOffsetInputBlur('offsetRight')}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-100 font-mono focus:border-amber-500 focus:outline-none"
+              />
+              <span className="absolute right-2 top-2 text-[11px] text-slate-500 font-mono">
+                {dimUnit}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              Front Door Clearance
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                step={dimUnit === 'mm' ? '10' : '0.5'}
+                value={qwzInputs.offsetFront}
+                onChange={(e) => onOffsetInputChange('offsetFront', e.target.value)}
+                onBlur={() => onOffsetInputBlur('offsetFront')}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-100 font-mono focus:border-amber-500 focus:outline-none"
+              />
+              <span className="absolute right-2 top-2 text-[11px] text-slate-500 font-mono">
+                {dimUnit}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              Rear Wall Clearance
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                step={dimUnit === 'mm' ? '10' : '0.5'}
+                value={qwzInputs.offsetRear}
+                onChange={(e) => onOffsetInputChange('offsetRear', e.target.value)}
+                onBlur={() => onOffsetInputBlur('offsetRear')}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-100 font-mono focus:border-amber-500 focus:outline-none"
+              />
+              <span className="absolute right-2 top-2 text-[11px] text-slate-500 font-mono">
+                {dimUnit}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              Floor / Hearth Clearance
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                step={dimUnit === 'mm' ? '10' : '0.5'}
+                value={qwzInputs.offsetFloor}
+                onChange={(e) => onOffsetInputChange('offsetFloor', e.target.value)}
+                onBlur={() => onOffsetInputBlur('offsetFloor')}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-100 font-mono focus:border-amber-500 focus:outline-none"
+              />
+              <span className="absolute right-2 top-2 text-[11px] text-slate-500 font-mono">
+                {dimUnit}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              Ceiling / Roof Clearance
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                step={dimUnit === 'mm' ? '10' : '0.5'}
+                value={qwzInputs.offsetCeiling}
+                onChange={(e) => onOffsetInputChange('offsetCeiling', e.target.value)}
+                onBlur={() => onOffsetInputBlur('offsetCeiling')}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-100 font-mono focus:border-amber-500 focus:outline-none"
+              />
+              <span className="absolute right-2 top-2 text-[11px] text-slate-500 font-mono">
+                {dimUnit}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Auto Center Toggle & Action */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-slate-800/80">
+          <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoCenter}
+              onChange={(e) => setAutoCenter(e.target.checked)}
+              className="rounded border-slate-700 text-blue-600 focus:ring-0 focus:outline-none"
+            />
+            <span>Auto-adjust clearances to keep QWZ centered when chamber dimensions change</span>
+          </label>
 
           <button
             onClick={handleCenterWorkZone}
@@ -891,7 +1110,6 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
           </div>
         </div>
       )}
-    </div>
     </div>
   );
 };
