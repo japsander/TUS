@@ -33,7 +33,7 @@ export const TusTrendGraph: React.FC<TusTrendGraphProps> = ({
 }) => {
   if (!data || data.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 bg-slate-900/50 rounded-xl border border-dashed border-slate-700 text-slate-500">
+      <div id="tus-trend-graph-container" className="flex flex-col items-center justify-center h-64 bg-slate-900/50 rounded-xl border border-dashed border-slate-700 text-slate-500">
         <p>No CSV data available for trend visualization.</p>
         <p className="text-[10px]">Import a TUS log file to see the interactive trend.</p>
       </div>

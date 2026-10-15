@@ -26,7 +26,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { TusTrendGraph } from './TusTrendGraph';
-import html2canvas from 'html2canvas';
+import { toPng } from 'html-to-image';
 
 interface ReportPreviewModalProps {
   isOpen: boolean;
@@ -81,13 +81,12 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
       const graphEl = document.getElementById('tus-trend-graph-container');
       if (graphEl) {
         try {
-          const canvas = await html2canvas(graphEl, {
-            scale: 2, // Higher quality
-            backgroundColor: '#0f172a', // Match the graph background
-            logging: false,
-            useCORS: true
+          // html-to-image handles SVG (recharts) much better than html2canvas
+          trendImageBase64 = await toPng(graphEl, {
+            quality: 1.0,
+            pixelRatio: 2,
+            backgroundColor: '#0f172a',
           });
-          trendImageBase64 = canvas.toDataURL('image/png');
         } catch (captureErr) {
           console.error('Failed to capture trend graph:', captureErr);
         }
