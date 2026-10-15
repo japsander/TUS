@@ -233,6 +233,7 @@ export function detectTusDwells(
 
   const results: DetectedDwell[] = [];
   let lastProcessedIndex = 0;
+  let prevEndIndex = 0;
 
   for (const target of targetTemps) {
     const lowerTol = target - tolerance;
@@ -283,10 +284,11 @@ export function detectTusDwells(
           const bestEnd = j - 1;
           const finalDurationMin = Math.round((rows[bestEnd].timestampSec - rows[bestStart].timestampSec) / 60);
 
-          // Calculate statistics for this dwell
-          const stats = calculateDwellStats(rows, bestStart, bestEnd, target, activeMappings, tolerance, tempUnit, minDurationMinutes);
+          // Calculate statistics for this dwell (including ramp-up from prevEndIndex to bestEnd)
+          const stats = calculateDwellStats(rows, bestStart, bestEnd, target, activeMappings, tolerance, tempUnit, minDurationMinutes, prevEndIndex);
           foundDwell = stats;
           
+          prevEndIndex = bestEnd;
           lastProcessedIndex = bestEnd + 1;
           results.push(foundDwell);
           break; // Move to next setpoint
@@ -297,7 +299,6 @@ export function detectTusDwells(
     }
 
     // If no strict dwell found, we stay at lastProcessedIndex and try next setpoint
-    // Or should we move forward? Usually, if TUS fails one setpoint, it's a fail.
   }
 
   return results;
@@ -314,15 +315,17 @@ function calculateDwellStats(
   activeMappings: CsvColumnMapping[],
   tolerance: number,
   tempUnit: TempUnit,
-  minDurationMinutes: number
+  minDurationMinutes: number,
+  prevEndIndex: number = 0
 ): DetectedDwell {
   const startRow = rows[bestStart];
   const endRow = rows[bestEnd];
   const durationMin = Math.round((endRow.timestampSec - startRow.timestampSec) / 60);
 
-  // Search for maximum overshoot (strictly within the stabilized dwell period)
+  // Search for maximum overshoot including ramping up to this dwell (from prevEndIndex to bestEnd)
   let maxOvershoot = target;
-  for (let i = bestStart; i <= bestEnd; i++) {
+  const overshootStart = Math.max(0, prevEndIndex);
+  for (let i = overshootStart; i <= bestEnd; i++) {
     for (const map of activeMappings) {
       const val = rows[i].values[map.csvHeader];
       if (val !== undefined && val > maxOvershoot) {
@@ -330,6 +333,7 @@ function calculateDwellStats(
       }
     }
   }
+
 
   const channelReadings: Record<string, number> = {};
   const channelMin: Record<string, number> = {};
@@ -424,6 +428,8 @@ export function convertToDwellPeriods(
     endIndex: d.endIndex,
     startTimeSec: rows[d.startIndex].timestampSec,
     endTimeSec: rows[d.endIndex].timestampSec,
+    startTimeStr: rows[d.startIndex].timeStr,
+    endTimeStr: rows[d.endIndex].timeStr,
   }));
 }
 

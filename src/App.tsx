@@ -32,7 +32,6 @@ import {
   computeSensorDistances,
 } from './utils/ams2750';
 import { TechnicalSchematic2D } from './components/TechnicalSchematic2D';
-import { Furnace3DView } from './components/Furnace3DView';
 import { DimensionInputs } from './components/DimensionInputs';
 import { ChannelManager } from './components/ChannelManager';
 import { SurveyDataSection } from './components/SurveyDataSection';
@@ -59,6 +58,8 @@ import {
   Compass,
   GitCommit,
   Calendar,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 
 export default function App() {
@@ -69,8 +70,6 @@ export default function App() {
   const tempUnit: TempUnit = unitSystem === 'metric' ? '°C' : '°F';
   const dimUnit: DimUnit = unitSystem === 'metric' ? 'mm' : 'in';
 
-  // Visualization mode: 2D Technical Schematic (matching Picture 1) or 3D Orbit
-  const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
 
   // Chamber in mm (UK Standard)
   const [chamber, setChamber] = useState<FurnaceChamber>({
@@ -259,6 +258,83 @@ export default function App() {
 
   // TUS Compliance
   const [isExtendedInterval, setIsExtendedInterval] = useState(false);
+
+  // Furnace Presets State
+  const [furnacePresets, setFurnacePresets] = useState<Array<{ id: string; name: string; meta: Partial<SurveyMetadata>; chamber: FurnaceChamber; qwz: QualifiedWorkZone }>>(() => {
+    try {
+      const saved = localStorage.getItem('tus_furnace_presets_v1');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [];
+  });
+  const [selectedFurnacePresetId, setSelectedFurnacePresetId] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('tus_furnace_presets_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.length > 0) return parsed[0].id;
+      }
+    } catch (e) {}
+    return '';
+  });
+  const [newFurnacePresetName, setNewFurnacePresetName] = useState('');
+
+  const saveFurnacePresets = (updated: typeof furnacePresets) => {
+    setFurnacePresets(updated);
+    try {
+      localStorage.setItem('tus_furnace_presets_v1', JSON.stringify(updated));
+    } catch (e) {}
+  };
+
+  const handleSaveCurrentAsFurnacePreset = () => {
+    const name = newFurnacePresetName.trim() || `Furnace ${meta.furnaceId || 'Custom'}`;
+    const newPreset = {
+      id: `furnace-${Date.now()}`,
+      name,
+      meta,
+      chamber,
+      qwz,
+    };
+    saveFurnacePresets([...furnacePresets, newPreset]);
+    setSelectedFurnacePresetId(newPreset.id);
+    setNewFurnacePresetName('');
+  };
+
+  const handleRenameFurnacePreset = (id: string) => {
+    if (!id) return;
+    const preset = furnacePresets.find(p => p.id === id);
+    if (!preset) return;
+    const newName = prompt('Enter new name for furnace preset:', preset.name);
+    if (!newName || !newName.trim()) return;
+    const updated = furnacePresets.map(p => p.id === id ? { ...p, name: newName.trim() } : p);
+    saveFurnacePresets(updated);
+  };
+
+  const handleDeleteFurnacePreset = (id: string) => {
+    if (!id) return;
+    const updated = furnacePresets.filter(p => p.id !== id);
+    saveFurnacePresets(updated);
+    if (selectedFurnacePresetId === id) {
+      if (updated.length > 0) {
+        setSelectedFurnacePresetId(updated[0].id);
+        setMeta(prev => ({ ...prev, ...updated[0].meta }));
+        setChamber(updated[0].chamber);
+        setQWZ(updated[0].qwz);
+      } else {
+        setSelectedFurnacePresetId('');
+      }
+    }
+  };
+
+  const handleSelectFurnacePreset = (id: string) => {
+    setSelectedFurnacePresetId(id);
+    const preset = furnacePresets.find(p => p.id === id);
+    if (preset) {
+      setMeta(prev => ({ ...prev, ...preset.meta }));
+      setChamber(preset.chamber);
+      setQWZ(preset.qwz);
+    }
+  };
 
   // Test Instrument Details (UK ISO/IEC 17025 Accredited)
   const [instrument, setInstrument] = useState<TestInstrument>({
@@ -647,10 +723,6 @@ export default function App() {
             <span>
               Class {meta.furnaceClass} Tolerance: <strong className="text-slate-200 font-mono">±{tolerance} {tempUnit}</strong>
             </span>
-            <span className="text-slate-600">|</span>
-            <span>
-              Active Channels: <strong className="text-cyan-400 font-mono">{channels.length}</strong> (Min required: {minSensors})
-            </span>
           </div>
 
           <div className="hidden sm:flex items-center gap-2 text-slate-500 text-[11px]">
@@ -674,57 +746,22 @@ export default function App() {
                 Furnace Wire Grid Web & Thermocouple Schematic
               </h2>
             </div>
-
-            {/* Toggle 2D Technical Schematic vs 3D Orbit */}
-            <div className="flex items-center bg-slate-950 border border-slate-700/80 rounded-xl p-0.5 text-xs">
-              <button
-                onClick={() => setViewMode('2d')}
-                className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                  viewMode === '2d'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="Exact 2D isometric line drawing with wire web & triangle markers matching Picture 1"
-              >
-                2D Schematic (Picture 1)
-              </button>
-              <button
-                onClick={() => setViewMode('3d')}
-                className={`px-3 py-1 rounded-lg font-medium transition-all cursor-pointer ${
-                  viewMode === '3d'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="Interactive 3D WebGL Orbit model"
-              >
-                3D CAD Orbit
-              </button>
-            </div>
+            <span className="text-[11px] text-slate-400 font-mono">
+              Use mouse / sliders to rotate & inspect 2D isometric schematic
+            </span>
           </div>
 
           {/* View Container */}
           <div className="h-[520px] xl:h-[660px] w-full">
-            {viewMode === '2d' ? (
-              <TechnicalSchematic2D
-                chamber={chamber}
-                qwz={qwz}
-                channels={channels}
-                dimUnit={dimUnit}
-                selectedChannelId={selectedChannelId}
-                onSelectChannel={setSelectedChannelId}
-                onExportImageReady={setDiagramImageBase64}
-              />
-            ) : (
-              <Furnace3DView
-                chamber={chamber}
-                qwz={qwz}
-                channels={channels}
-                dimUnit={dimUnit}
-                selectedChannelId={selectedChannelId}
-                onSelectChannel={setSelectedChannelId}
-                onExportImageReady={setDiagramImageBase64}
-              />
-            )}
+            <TechnicalSchematic2D
+              chamber={chamber}
+              qwz={qwz}
+              channels={channels}
+              dimUnit={dimUnit}
+              selectedChannelId={selectedChannelId}
+              onSelectChannel={setSelectedChannelId}
+              onExportImageReady={setDiagramImageBase64}
+            />
           </div>
 
           {/* Real-Time Auto-Adjusting QWZ Geometrical Information & Clearance Panel */}
@@ -906,6 +943,58 @@ export default function App() {
                   <Settings className="w-4 h-4 text-cyan-400" />
                   <span>Furnace Identification & Audit Metadata</span>
                 </h3>
+
+                {/* Furnace Presets Bar */}
+                <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 flex-1 min-w-[260px]">
+                    <span className="text-slate-400 font-medium text-xs">Furnace Preset:</span>
+                    <select
+                      value={selectedFurnacePresetId}
+                      onChange={(e) => handleSelectFurnacePreset(e.target.value)}
+                      className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-cyan-300 font-bold focus:outline-none flex-1"
+                    >
+                      {furnacePresets.length === 0 ? (
+                        <option value="">-- No furnace presets saved --</option>
+                      ) : (
+                        furnacePresets.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    <button
+                      onClick={() => handleRenameFurnacePreset(selectedFurnacePresetId)}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium cursor-pointer"
+                      title="Rename selected furnace preset"
+                    >
+                      Rename
+                    </button>
+                    <button
+                      onClick={() => handleDeleteFurnacePreset(selectedFurnacePresetId)}
+                      className="p-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-400 rounded-lg text-xs cursor-pointer"
+                      title="Delete selected furnace preset"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="New preset name..."
+                      value={newFurnacePresetName}
+                      onChange={(e) => setNewFurnacePresetName(e.target.value)}
+                      className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:outline-none"
+                    />
+                    <button
+                      onClick={handleSaveCurrentAsFurnacePreset}
+                      className="flex items-center gap-1.5 px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Save Preset
+                    </button>
+                  </div>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                   <div>

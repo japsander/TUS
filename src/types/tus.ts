@@ -61,6 +61,7 @@ export interface ThermocoupleChannel {
   
   isControlSensor?: boolean;
   uses?: number;
+  failed?: boolean;
 }
 
 export interface SurveySetpoint {
@@ -159,4 +160,6 @@ export interface DetectedDwellPeriod {
   endIndex: number;
   startTimeSec: number;
   endTimeSec: number;
+  startTimeStr?: string;
+  endTimeStr?: string;
 }

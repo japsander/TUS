@@ -662,6 +662,7 @@ export interface SetpointAnalysisResult {
   passed: boolean;
   minSensorLabel: string;
   maxSensorLabel: string;
+  sensorFailureNote?: string;
   channelResults: Array<{
     channelId: string;
     channelNumber: number;
@@ -671,6 +672,7 @@ export interface SetpointAnalysisResult {
     correctedTemp: number;
     deltaFromTarget: number;
     inTolerance: boolean;
+    failed?: boolean;
   }>;
 }
 
@@ -685,6 +687,11 @@ export function evaluateSetpoint(
   const minAllowed = setpoint.targetTemp - tol;
   const maxAllowed = setpoint.targetTemp + tol;
 
+  const failedChannels = channels.filter((ch) => ch.failed);
+  const validChannels = channels.filter((ch) => !ch.failed);
+  const minRequired = 9; // Minimum baseline sensors per AMS 2750 Table 11
+  const hasValidCount = validChannels.length >= minRequired;
+
   let minCorrected = Infinity;
   let maxCorrected = -Infinity;
   let sumCorrected = 0;
@@ -694,20 +701,21 @@ export function evaluateSetpoint(
   const channelResults = channels.map((ch) => {
     const raw = setpoint.readings[ch.id] ?? setpoint.targetTemp;
     const tcCorr = ch.correctionFactors[setpoint.id] ?? 0;
-    // AMS 2750 Rev H arithmetic: Corrected = Raw + TC Correction + Instrument Correction
     const corrected = Math.round((raw + tcCorr + instrumentError) * 10) / 10;
     const delta = Math.round((corrected - setpoint.targetTemp) * 10) / 10;
-    const inTolerance = corrected >= minAllowed && corrected <= maxAllowed;
+    const inTolerance = ch.failed ? true : (corrected >= minAllowed && corrected <= maxAllowed);
 
-    if (corrected < minCorrected) {
-      minCorrected = corrected;
-      minSensor = ch.label;
+    if (!ch.failed) {
+      if (corrected < minCorrected) {
+        minCorrected = corrected;
+        minSensor = ch.label;
+      }
+      if (corrected > maxCorrected) {
+        maxCorrected = corrected;
+        maxSensor = ch.label;
+      }
+      sumCorrected += corrected;
     }
-    if (corrected > maxCorrected) {
-      maxCorrected = corrected;
-      maxSensor = ch.label;
-    }
-    sumCorrected += corrected;
 
     return {
       channelId: ch.id,
@@ -717,16 +725,32 @@ export function evaluateSetpoint(
       tcCorrection: tcCorr,
       correctedTemp: corrected,
       deltaFromTarget: delta,
-      inTolerance,
+      inTolerance: ch.failed ? true : inTolerance,
+      failed: ch.failed,
     };
   });
 
-  const meanCorrected = channels.length > 0 ? Math.round((sumCorrected / channels.length) * 10) / 10 : setpoint.targetTemp;
+  const evaluationChannels = validChannels.length > 0 ? validChannels : channels;
+  const meanCorrected = evaluationChannels.length > 0 ? Math.round((sumCorrected / evaluationChannels.length) * 10) / 10 : setpoint.targetTemp;
   const spread = Math.round((maxCorrected - minCorrected) * 10) / 10;
   const overshootPassed = setpoint.maxOvershootObserved <= setpoint.targetTemp + tol;
-  const allChannelsPassed = channelResults.every((c) => c.inTolerance);
+  
+  const allValidPassed = validChannels.length > 0 
+    ? channelResults.filter(c => !c.failed).every(c => c.inTolerance)
+    : channelResults.every(c => c.inTolerance);
 
-  const passed = allChannelsPassed && overshootPassed;
+  let passed = allValidPassed && overshootPassed;
+  let sensorFailureNote: string | undefined;
+
+  if (failedChannels.length > 0) {
+    if (hasValidCount && allValidPassed && overshootPassed) {
+      passed = true;
+      sensorFailureNote = `AMS 2750 Rev H Sensor Failure Provision Note: ${failedChannels.length} sensor(s) experienced failure during TUS (${failedChannels.map(c => c.label).join(', ')}). Remaining active valid sensor count (${validChannels.length}) satisfies AMS 2750 Rev H Table 11 minimum requirements. Per Rev H allowances, survey is certified as PASS.`;
+    } else if (!hasValidCount) {
+      passed = false;
+      sensorFailureNote = `AMS 2750 Rev H Sensor Failure Violation: ${failedChannels.length} sensor(s) failed, leaving only ${validChannels.length} valid sensors, which is below the minimum Table 11 requirement (${minRequired}). Survey FAILED.`;
+    }
+  }
 
   return {
     setpointId: setpoint.id,
@@ -734,14 +758,16 @@ export function evaluateSetpoint(
     tolerance: tol,
     minAllowed,
     maxAllowed,
-    minCorrectedTemp: minCorrected,
-    maxCorrectedTemp: maxCorrected,
+    minCorrectedTemp: minCorrected === Infinity ? setpoint.targetTemp : minCorrected,
+    maxCorrectedTemp: maxCorrected === -Infinity ? setpoint.targetTemp : maxCorrected,
     meanCorrectedTemp: meanCorrected,
     uniformitySpread: spread,
     maxOvershoot: setpoint.maxOvershootObserved,
     passed,
-    minSensorLabel: minSensor,
-    maxSensorLabel: maxSensor,
+    minSensorLabel: minSensor || 'N/A',
+    maxSensorLabel: maxSensor || 'N/A',
+    sensorFailureNote,
     channelResults,
   };
 }
+

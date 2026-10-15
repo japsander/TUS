@@ -823,6 +823,20 @@ export async function generateTusDocxBlob(params: {
           }),
         ],
       }),
+      ...(sa.sensorFailureNote ? [
+        new Paragraph({
+          spacing: { before: 60, after: 80 },
+          children: [
+            new TextRun({
+              text: `⚠️ ${sa.sensorFailureNote}`,
+              bold: true,
+              size: 16,
+              color: 'B45309',
+              font: 'Arial',
+            }),
+          ],
+        })
+      ] : []),
       new Paragraph({ spacing: { after: 80 } })
     );
 

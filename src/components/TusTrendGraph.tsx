@@ -68,17 +68,30 @@ export const TusTrendGraph: React.FC<TusTrendGraphProps> = ({
           <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
           
           {/* Highlight Dwell Periods */}
-          {dwells.map((dwell, idx) => (
-            <ReferenceArea
-              key={`dwell-${idx}`}
-              x1={data[dwell.startIndex]?.timeStr}
-              x2={data[dwell.endIndex]?.timeStr}
-              strokeOpacity={0.3}
-              fill="#10b981"
-              fillOpacity={0.1}
-              label={{ position: 'top', value: `${dwell.targetTemp}${tempUnit} Dwell`, fill: '#10b981', fontSize: 10, fontWeight: 'bold' }}
-            />
-          ))}
+          {dwells.map((dwell, idx) => {
+            const startT = dwell.startTimeStr || data[dwell.startIndex]?.timeStr || '';
+            const endT = dwell.endTimeStr || data[dwell.endIndex]?.timeStr || '';
+            return (
+              <ReferenceArea
+                key={`dwell-${idx}`}
+                x1={startT}
+                x2={endT}
+                stroke="#34d399"
+                strokeWidth={1.5}
+                strokeDasharray="4 4"
+                strokeOpacity={0.6}
+                fill="#34d399"
+                fillOpacity={0.15}
+                label={{
+                  position: 'insideTop',
+                  value: `${dwell.targetTemp}${tempUnit} Dwell (${startT} - ${endT})`,
+                  fill: '#34d399',
+                  fontSize: 10,
+                  fontWeight: 'bold',
+                }}
+              />
+            );
+          })}
 
           {/* Render lines for mapped channels */}
           {channels.map((ch, idx) => (
