@@ -44,7 +44,7 @@ export const TusTrendGraph: React.FC<TusTrendGraphProps> = ({
   // But for typical TUS runs (a few thousand points), recharts should be okay.
   
   return (
-    <div className="w-full h-[400px] bg-slate-900/40 p-4 rounded-xl border border-slate-800 shadow-inner">
+    <div id="tus-trend-graph-container" className="w-full h-[400px] bg-slate-900/40 p-4 rounded-xl border border-slate-800 shadow-inner">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />

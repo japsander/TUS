@@ -60,6 +60,7 @@ export interface ThermocoupleChannel {
   correctionFactors: Record<string, number>;
   
   isControlSensor?: boolean;
+  uses?: number;
 }
 
 export interface SurveySetpoint {
@@ -71,6 +72,9 @@ export interface SurveySetpoint {
   maxOvershootObserved: number;
   // channelId -> raw temperature reading
   readings: Record<string, number>;
+  controlSetpoint?: number;
+  controlReading?: number;
+  controlOffset?: number;
 }
 
 export interface SecondaryStandard {
@@ -139,6 +143,8 @@ export interface SurveyMetadata {
   qualityManagerName: string;
   qualityManagerTitle: string;
   responsibleEngineerName: string;
+  lastSatDate?: string;
+  lastSatResult?: string;
 }
 
 export interface TusTrendData {

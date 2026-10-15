@@ -26,6 +26,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { TusTrendGraph } from './TusTrendGraph';
+import html2canvas from 'html2canvas';
 
 interface ReportPreviewModalProps {
   isOpen: boolean;
@@ -74,6 +75,24 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
   const handleDownloadDocx = async () => {
     try {
       setDownloading(true);
+      
+      // Capture trend graph if available
+      let trendImageBase64: string | undefined;
+      const graphEl = document.getElementById('tus-trend-graph-container');
+      if (graphEl) {
+        try {
+          const canvas = await html2canvas(graphEl, {
+            scale: 2, // Higher quality
+            backgroundColor: '#0f172a', // Match the graph background
+            logging: false,
+            useCORS: true
+          });
+          trendImageBase64 = canvas.toDataURL('image/png');
+        } catch (captureErr) {
+          console.error('Failed to capture trend graph:', captureErr);
+        }
+      }
+
       const blob = await generateTusDocxBlob({
         meta,
         chamber,
@@ -83,6 +102,7 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
         instrument,
         checklist,
         diagramImageBase64,
+        trendImageBase64,
       });
 
       const url = URL.createObjectURL(blob);

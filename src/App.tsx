@@ -20,6 +20,7 @@ import {
   TusTrendData,
   DetectedDwellPeriod,
 } from './types/tus';
+import { TUS_INTERVALS, calculateNextTusDueDate } from './utils/tusCompliance';
 import {
   generateStandardAMS2750Sensors,
   CLASS_TOLERANCES,
@@ -57,6 +58,7 @@ import {
   Wrench,
   Compass,
   GitCommit,
+  Calendar,
 } from 'lucide-react';
 
 export default function App() {
@@ -150,6 +152,8 @@ export default function App() {
     qualityManagerName: 'Dr. Sarah Lin',
     qualityManagerTitle: 'Director of Aerospace Quality & Compliance',
     responsibleEngineerName: 'David K. Hoffman, CEng MIMMM',
+    lastSatDate: '2026-09-01',
+    lastSatResult: 'Pass (Max Error 0.4°C)',
   });
 
   // Survey Setpoints in Celsius (°C)
@@ -252,6 +256,9 @@ export default function App() {
   // TUS Trend Data from CSV (for Report Graph)
   const [trendData, setTrendData] = useState<TusTrendData[]>([]);
   const [dwellPeriods, setDwellPeriods] = useState<DetectedDwellPeriod[]>([]);
+
+  // TUS Compliance
+  const [isExtendedInterval, setIsExtendedInterval] = useState(false);
 
   // Test Instrument Details (UK ISO/IEC 17025 Accredited)
   const [instrument, setInstrument] = useState<TestInstrument>({
@@ -1040,6 +1047,59 @@ export default function App() {
                       onChange={(e) => setMeta({ ...meta, fanCondition: e.target.value })}
                       className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1">Last System Accuracy Test (SAT) Date</label>
+                    <input
+                      type="date"
+                      value={meta.lastSatDate}
+                      onChange={(e) => setMeta({ ...meta, lastSatDate: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1">Last SAT Finding / Result</label>
+                    <input
+                      type="text"
+                      value={meta.lastSatResult}
+                      onChange={(e) => setMeta({ ...meta, lastSatResult: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none"
+                      placeholder="e.g. Pass (Max Error 0.3°C)"
+                    />
+                  </div>
+
+                  <div className="col-span-2 bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3 mt-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-amber-400" />
+                        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                          AMS 2750 Rev H Table 14: TUS Interval Extension
+                        </h4>
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isExtendedInterval}
+                          onChange={(e) => setIsExtendedInterval(e.target.checked)}
+                          className="rounded border-slate-700 text-cyan-500 focus:ring-0"
+                        />
+                        <span className="text-[10px] text-slate-300">Apply Extended Interval (After 8 success)</span>
+                      </label>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="text-[10px] text-slate-400 leading-relaxed">
+                        {TUS_INTERVALS[meta.furnaceClass].description}
+                      </div>
+                      <div className="bg-slate-900 border border-slate-800 p-2 rounded-lg text-center">
+                        <div className="text-[9px] uppercase font-bold text-slate-500">Next TUS Due Date</div>
+                        <div className="text-sm font-bold text-cyan-300 font-mono">
+                          {calculateNextTusDueDate(meta.date, meta.furnaceClass, isExtendedInterval)}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

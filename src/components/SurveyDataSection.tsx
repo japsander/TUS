@@ -373,6 +373,54 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                     Max permitted: {analysis.maxAllowed} {tempUnit} (Target + Class {furnaceClass} tolerance)
                   </span>
                 </div>
+
+                <div className="col-span-2 border-t border-slate-800 pt-3 mt-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+                    Furnace Control Instrument (AMS 2750 Rev H § 3.5.15.i)
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1">Control Setpoint</label>
+                      <input
+                        type="number"
+                        value={currentSetpoint.controlSetpoint ?? currentSetpoint.targetTemp}
+                        onChange={(e) =>
+                          handleUpdateSetpoint(currentSetpoint.id, {
+                            controlSetpoint: parseFloat(e.target.value) || 0,
+                          })
+                        }
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-white font-mono focus:border-cyan-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1">Control Reading</label>
+                      <input
+                        type="number"
+                        value={currentSetpoint.controlReading ?? currentSetpoint.targetTemp}
+                        onChange={(e) =>
+                          handleUpdateSetpoint(currentSetpoint.id, {
+                            controlReading: parseFloat(e.target.value) || 0,
+                          })
+                        }
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-white font-mono focus:border-cyan-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1">Instrument Offset</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={currentSetpoint.controlOffset ?? 0}
+                        onChange={(e) =>
+                          handleUpdateSetpoint(currentSetpoint.id, {
+                            controlOffset: parseFloat(e.target.value) || 0,
+                          })
+                        }
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-white font-mono focus:border-cyan-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 

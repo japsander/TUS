@@ -125,8 +125,9 @@ export async function generateTusDocxBlob(params: {
   instrument: TestInstrument;
   checklist: NadcapCheckItem[];
   diagramImageBase64?: string;
+  trendImageBase64?: string;
 }): Promise<Blob> {
-  const { meta, chamber, qwz, channels, setpoints, instrument, checklist, diagramImageBase64 } = params;
+  const { meta, chamber, qwz, channels, setpoints, instrument, checklist, diagramImageBase64, trendImageBase64 } = params;
 
   const volumeCuFt = calculateVolumeInCuFt(qwz, meta.dimUnit);
   const { minSensors, ruleText } = getMinRequiredSensors(volumeCuFt);
@@ -323,6 +324,22 @@ export async function generateTusDocxBlob(params: {
             createCell(`${meta.operatingTempMin}${meta.tempUnit} to ${meta.operatingTempMax}${meta.tempUnit}`),
             createCell('Atmosphere & Fan:', { bold: true, bg: 'F1F5F9' }),
             createCell(`${meta.atmosphere} | Fan: ${meta.fanCondition}`),
+          ],
+        }),
+        new TableRow({
+          children: [
+            createCell('Heating Method:', { bold: true, bg: 'F1F5F9' }),
+            createCell(meta.heatingMethod),
+            createCell('Load Condition:', { bold: true, bg: 'F1F5F9' }),
+            createCell(meta.loadCondition),
+          ],
+        }),
+        new TableRow({
+          children: [
+            createCell('Last SAT Date:', { bold: true, bg: 'F1F5F9' }),
+            createCell(meta.lastSatDate || 'N/A'),
+            createCell('Last SAT Result:', { bold: true, bg: 'F1F5F9' }),
+            createCell(meta.lastSatResult || 'N/A'),
           ],
         }),
       ],
@@ -703,6 +720,43 @@ export async function generateTusDocxBlob(params: {
     })
   );
 
+  if (trendImageBase64) {
+    try {
+      const imgBytes = base64ToUint8Array(trendImageBase64);
+      children.push(
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 100, after: 120 },
+          children: [
+            new ImageRun({
+              data: imgBytes,
+              transformation: {
+                width: 600,
+                height: 320,
+              },
+              type: 'png',
+            }),
+          ],
+        }),
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 120 },
+          children: [
+            new TextRun({
+              text: 'Figure 2: Temperature Uniformity Survey Trend Graph with Identified Dwell Soak Periods.',
+              italics: true,
+              font: 'Arial',
+              size: 16,
+              color: '64748B',
+            }),
+          ],
+        })
+      );
+    } catch (err) {
+      console.error('Failed to add trend image to docx:', err);
+    }
+  }
+
   // Results for each setpoint
   setpointAnalyses.forEach((sa, spIdx) => {
     const sp = setpoints[spIdx];
@@ -750,13 +804,21 @@ export async function generateTusDocxBlob(params: {
           }),
           new TableRow({
             children: [
-              createCell('Mean Temperature', { bold: true, bg: 'F1F5F9' }),
-              createCell(`${sa.meanCorrectedTemp} ${meta.tempUnit}`),
               createCell('Uniformity Spread (Max-Min)', { bold: true, bg: 'F1F5F9' }),
               createCell(`${sa.uniformitySpread} ${meta.tempUnit} (Max allowed: ${sa.tolerance * 2} ${meta.tempUnit})`, {
                 bold: true,
                 color: sa.uniformitySpread <= sa.tolerance * 2 ? '15803D' : 'B91C1C',
               }),
+              createCell('Mean Temperature', { bold: true, bg: 'F1F5F9' }),
+              createCell(`${sa.meanCorrectedTemp} ${meta.tempUnit}`),
+            ],
+          }),
+          new TableRow({
+            children: [
+              createCell('Furnace Control Instrument', { bold: true, bg: 'F8FAFC' }),
+              createCell(`Setpoint: ${sp.controlSetpoint ?? sp.targetTemp}${meta.tempUnit} | Reading: ${sp.controlReading ?? sp.targetTemp}${meta.tempUnit}`),
+              createCell('Applied Offset', { bold: true, bg: 'F8FAFC' }),
+              createCell(`${sp.controlOffset ?? 0.0} ${meta.tempUnit}`),
             ],
           }),
         ],

@@ -51,6 +51,7 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
   const [batchLotModalOpen, setBatchLotModalOpen] = useState(false);
   const [batchLotNumber, setBatchLotNumber] = useState('LOT-2026-N102');
   const [batchWireType, setBatchWireType] = useState<WireType>('N');
+  const [batchUses, setBatchUses] = useState(1);
 
   // Add a new channel at center or custom position
   const handleAddChannel = () => {
@@ -191,6 +192,7 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
       ...c,
       rollLotNumber: batchLotNumber,
       type: batchWireType,
+      uses: batchUses,
     }));
     onUpdateChannels(updated);
     setBatchLotModalOpen(false);
@@ -274,13 +276,16 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                 <th className="py-3 px-2 text-center text-amber-400">Rear Wall</th>
                 <th className="py-3 px-2 text-center text-amber-400">Floor</th>
                 <th className="py-3 px-2 text-center text-amber-400">Ceiling</th>
+                <th className="py-3 px-1 text-center" title="Sensor Error Indicator">Err</th>
                 <th className="py-3 px-2 w-28 text-center text-cyan-400">Lot #</th>
+                <th className="py-3 px-2 w-16 text-center">Uses</th>
                 <th className="py-3 px-2 w-20 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-xs">
               {filteredChannels.map((ch) => {
                 const isSelected = ch.id === selectedChannelId;
+                const isOverused = (ch.uses ?? 0) >= 90;
                 return (
                   <tr
                     key={ch.id}
@@ -432,6 +437,17 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                       </div>
                     </td>
 
+                    {/* Calibration Error Indicator */}
+                    <td className="py-2.5 px-1 text-center">
+                      {Object.values(ch.correctionFactors).some(f => Math.abs(f) > (tempUnit === '°C' ? 1.1 : 2.0)) && (
+                        <div className="flex justify-center">
+                          <span title="Sensor correction factor exceeds Special Limits of Error (AMS 2750 Table 1)">
+                            <AlertCircle className="w-4 h-4 text-amber-500" />
+                          </span>
+                        </div>
+                      )}
+                    </td>
+
                     {/* Lot # */}
                     <td className="py-2.5 px-2 text-center">
                       <input
@@ -443,6 +459,28 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                         onClick={(e) => e.stopPropagation()}
                         className="w-24 text-center bg-slate-950/60 border border-slate-700/60 rounded px-1.5 py-1 text-xs font-mono text-slate-300 focus:border-cyan-500 focus:outline-none"
                       />
+                    </td>
+
+                    {/* Uses */}
+                    <td className="py-2.5 px-2 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <input
+                          type="number"
+                          value={ch.uses ?? 0}
+                          onChange={(e) =>
+                            handleUpdateChannel(ch.id, { uses: parseInt(e.target.value, 10) || 0 })
+                          }
+                          onClick={(e) => e.stopPropagation()}
+                          className={`w-12 text-center bg-slate-950 border rounded px-1 py-1 text-xs font-mono focus:outline-none ${
+                            isOverused ? 'border-red-500 text-red-400' : 'border-slate-700 text-slate-300'
+                          }`}
+                        />
+                        {isOverused && (
+                          <span title="AMS 2750 Limit Exceeded (90 uses)">
+                            <AlertCircle className="w-3.5 h-3.5 text-red-500" />
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Actions */}
@@ -519,6 +557,18 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                   type="text"
                   value={batchLotNumber}
                   onChange={(e) => setBatchLotNumber(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Usage Count (Accumulated)
+                </label>
+                <input
+                  type="number"
+                  value={batchUses}
+                  onChange={(e) => setBatchUses(parseInt(e.target.value, 10) || 0)}
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
                 />
               </div>
