@@ -702,32 +702,27 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
             </text>
           </g>
 
-          {/* Permanent Furnace Sensors (Control & Overtemp) */}
+          {/* Permanent Furnace Sensors Node Dots on 3D Model */}
           {showPermanentSensors && (
             <g>
               {controlProj && (
                 <g>
+                  {/* Control TC Node Dot */}
                   <circle cx={controlProj.x} cy={controlProj.y} r="7" fill="#06B6D4" stroke="#FFFFFF" strokeWidth="2" filter="url(#badge-shadow)" />
                   <circle cx={controlProj.x} cy={controlProj.y} r="13" fill="none" stroke="#06B6D4" strokeWidth="1.5" strokeDasharray="3,2" opacity="0.9" />
-                  <rect x={controlProj.x - 60} y={controlProj.y - 30} width="120" height="20" rx="4" fill="#082F49" stroke="#06B6D4" strokeWidth="1.2" />
-                  <text x={controlProj.x} y={controlProj.y - 16} textAnchor="middle" fill="#22D3EE" fontSize="9" fontWeight="bold">
-                    {controlProj.label || 'Control TC'}
-                  </text>
                 </g>
               )}
 
               {overtempProj && (
                 <g>
+                  {/* Overtemp TC Node Dot */}
                   <circle cx={overtempProj.x} cy={overtempProj.y} r="7" fill="#EF4444" stroke="#FFFFFF" strokeWidth="2" filter="url(#badge-shadow)" />
                   <circle cx={overtempProj.x} cy={overtempProj.y} r="13" fill="none" stroke="#EF4444" strokeWidth="1.5" strokeDasharray="3,2" opacity="0.9" />
-                  <rect x={overtempProj.x - 65} y={overtempProj.y + 8} width="130" height="20" rx="4" fill="#450A0A" stroke="#EF4444" strokeWidth="1.2" />
-                  <text x={overtempProj.x} y={overtempProj.y + 22} textAnchor="middle" fill="#F87171" fontSize="9" fontWeight="bold">
-                    {overtempProj.label || 'Overtemp TC'}
-                  </text>
                 </g>
               )}
             </g>
           )}
+
 
           {/* ----------------------------------------------------------- */}
           {/* 3. PHYSICAL WIRE GRID / WEB STRUCTURE (Opposite-Corner 3D Web & Perimeter Frame) */}
@@ -875,98 +870,7 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
             );
           })()}
 
-          {/* ----------------------------------------------------------- */}
-          {/* 5. DIMENSION ARROWS & CALLOUTS (a, b from Picture 1)        */}
-          {/* ----------------------------------------------------------- */}
-          {showDimensions && (
-            <g>
-              {/* Arrow 'a': Distance to Right Wall from TC 19/Right QWZ boundary */}
-              {(() => {
-                // Point on right edge of QWZ and right wall of chamber
-                const qRightPt = qwzVertices.rBR;
-                const wallRightPt = chamberVertices.rBR;
-                const midX = (qRightPt.x + wallRightPt.x) / 2;
-                const arrowY = qRightPt.y - 45;
 
-                return (
-                  <g>
-                    {/* Dimension Arrow 'a' */}
-                    <line
-                      x1={qRightPt.x + 2}
-                      y1={arrowY}
-                      x2={wallRightPt.x - 2}
-                      y2={arrowY}
-                      stroke="#2563EB"
-                      strokeWidth="1.6"
-                      markerStart="url(#arrow-blue-start)"
-                      markerEnd="url(#arrow-blue-end)"
-                    />
-                    {/* Dimension Label 'a' */}
-                    <text
-                      x={midX}
-                      y={arrowY - 6}
-                      fill="#2563EB"
-                      fontSize="13"
-                      fontWeight="bold"
-                      textAnchor="middle"
-                    >
-                      a = {qwz.offsetRight} {dimUnit}
-                    </text>
-                  </g>
-                );
-              })()}
-
-              {/* Arrow 'b': Distance to Floor/Hearth from TC 19/QWZ Bottom */}
-              {(() => {
-                const qBottomPt = qwzVertices.fBR;
-                const floorPt = chamberVertices.fBR;
-                const arrowX = qBottomPt.x - 30;
-
-                return (
-                  <g>
-                    {/* Dimension Arrow 'b' */}
-                    <line
-                      x1={arrowX}
-                      y1={floorPt.y - 2}
-                      x2={arrowX}
-                      y2={qBottomPt.y + 2}
-                      stroke="#2563EB"
-                      strokeWidth="1.6"
-                      markerStart="url(#arrow-blue-start)"
-                      markerEnd="url(#arrow-blue-end)"
-                    />
-                    {/* Dimension Label 'b' */}
-                    <text
-                      x={arrowX - 8}
-                      y={(floorPt.y + qBottomPt.y) / 2 + 4}
-                      fill="#2563EB"
-                      fontSize="13"
-                      fontWeight="bold"
-                      textAnchor="end"
-                    >
-                      b = {qwz.offsetFloor} {dimUnit}
-                    </text>
-                  </g>
-                );
-              })()}
-
-              {/* Selected TC Clearance Callout Badge (if specific channel selected) */}
-              {selectedChannel && selectedProj && (
-                <g>
-                  {/* Subtle target circle */}
-                  <circle
-                    cx={selectedProj.x}
-                    cy={selectedProj.y}
-                    r="18"
-                    fill="none"
-                    stroke="#EF4444"
-                    strokeWidth="2"
-                    strokeDasharray="3,3"
-                  />
-                </g>
-              )}
-            </g>
-          )}
 
           {/* ----------------------------------------------------------- */}
           {/* 6. THERMOCOUPLE SENSOR MARKERS (Upright Triangles as in Picture 1) */}
@@ -1036,16 +940,54 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
             >
               △ Thermocouple Positions • Blue: 4 Main Opposite-Corner 3D Diagonals • Slate: 12 Perimeter Rails
             </text>
-            <text
-              x="0"
-              y="30"
-              fill={isWhiteTheme ? '#2563EB' : '#60A5FA'}
-              fontSize="10"
-              fontWeight="bold"
-            >
-              a = Right wall clearance ({qwz.offsetRight} {dimUnit}) • b = Hearth/Floor clearance ({qwz.offsetFloor} {dimUnit})
-            </text>
           </g>
+          <g transform="translate(650, 20)">
+            <rect width="180" height="145" rx="5" fill={isWhiteTheme ? '#F8FAFC' : '#0F172A'} stroke="#64748B" strokeWidth="1" opacity="0.9" />
+            <text x="90" y="20" textAnchor="middle" fontSize="12" fontWeight="bold" fill={isWhiteTheme ? '#0F172A' : '#F8FAFC'}>Offset Dimensions</text>
+            <line x1="10" y1="30" x2="170" y2="30" stroke="#64748B" strokeWidth="1" />
+            
+            <text x="10" y="50" fontSize="10" fill={isWhiteTheme ? '#0F172A' : '#F8FAFC'}>Top:</text>
+            <text x="170" y="50" textAnchor="end" fontSize="10" fontWeight="bold" fill={isWhiteTheme ? '#0F172A' : '#F8FAFC'}>{qwz.offsetCeiling} {dimUnit}</text>
+            
+            <text x="10" y="70" fontSize="10" fill={isWhiteTheme ? '#0F172A' : '#F8FAFC'}>Bottom:</text>
+            <text x="170" y="70" textAnchor="end" fontSize="10" fontWeight="bold" fill={isWhiteTheme ? '#0F172A' : '#F8FAFC'}>{qwz.offsetFloor} {dimUnit}</text>
+            
+            <text x="10" y="90" fontSize="10" fill={isWhiteTheme ? '#0F172A' : '#F8FAFC'}>Left:</text>
+            <text x="170" y="90" textAnchor="end" fontSize="10" fontWeight="bold" fill={isWhiteTheme ? '#0F172A' : '#F8FAFC'}>{qwz.offsetLeft} {dimUnit}</text>
+            
+            <text x="10" y="110" fontSize="10" fill={isWhiteTheme ? '#0F172A' : '#F8FAFC'}>Right:</text>
+            <text x="170" y="110" textAnchor="end" fontSize="10" fontWeight="bold" fill={isWhiteTheme ? '#0F172A' : '#F8FAFC'}>{qwz.offsetRight} {dimUnit}</text>
+            
+            <text x="10" y="130" fontSize="10" fill={isWhiteTheme ? '#0F172A' : '#F8FAFC'}>Back:</text>
+            <text x="170" y="130" textAnchor="end" fontSize="10" fontWeight="bold" fill={isWhiteTheme ? '#0F172A' : '#F8FAFC'}>{qwz.offsetRear} {dimUnit}</text>
+          </g>
+
+          {/* Permanent Sensors Legend Table */}
+          {showPermanentSensors && (controlProj || overtempProj) && (
+            <g transform="translate(650, 180)">
+              <rect width="180" height={controlProj && overtempProj ? 80 : 55} rx="5" fill={isWhiteTheme ? '#F8FAFC' : '#0F172A'} stroke="#64748B" strokeWidth="1" opacity="0.95" filter="url(#badge-shadow)" />
+              <text x="90" y="18" textAnchor="middle" fontSize="11" fontWeight="bold" fill={isWhiteTheme ? '#0F172A' : '#F8FAFC'}>Permanent Sensors Legend</text>
+              <line x1="10" y1="26" x2="170" y2="26" stroke="#64748B" strokeWidth="1" />
+              
+              {controlProj && (
+                <g transform="translate(12, 44)">
+                  <circle cx="6" cy="-3" r="5" fill="#06B6D4" stroke="#FFFFFF" strokeWidth="1.5" />
+                  <text x="18" y="1" fontSize="10" fontWeight="bold" fill={isWhiteTheme ? '#082F49' : '#22D3EE'}>
+                    {controlProj.label || 'Control TC'}
+                  </text>
+                </g>
+              )}
+
+              {overtempProj && (
+                <g transform={`translate(12, ${controlProj ? 64 : 44})`}>
+                  <circle cx="6" cy="-3" r="5" fill="#EF4444" stroke="#FFFFFF" strokeWidth="1.5" />
+                  <text x="18" y="1" fontSize="10" fontWeight="bold" fill={isWhiteTheme ? '#450A0A' : '#F87171'}>
+                    {overtempProj.label || 'Overtemp TC'}
+                  </text>
+                </g>
+              )}
+            </g>
+          )}
         </svg>
       </div>
 
@@ -1074,16 +1016,7 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
             Wire Grid Web
           </button>
 
-          <button
-            onClick={() => setShowDimensions(!showDimensions)}
-            className={`px-2.5 py-1 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
-              showDimensions
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-transparent border-slate-400 text-slate-500'
-            }`}
-          >
-            Offset Arrows (a, b)
-          </button>
+
         </div>
 
         {/* Orientation & Zoom Fine-tuning Sliders */}

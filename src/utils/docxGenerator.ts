@@ -334,14 +334,7 @@ export async function generateTusDocxBlob(params: {
             createCell(meta.loadCondition),
           ],
         }),
-        new TableRow({
-          children: [
-            createCell('Last SAT Date:', { bold: true, bg: 'F1F5F9' }),
-            createCell(meta.lastSatDate || 'N/A'),
-            createCell('Last SAT Result:', { bold: true, bg: 'F1F5F9' }),
-            createCell(meta.lastSatResult || 'N/A'),
-          ],
-        }),
+
       ],
     }),
     new Paragraph({ spacing: { after: 200 } })
@@ -473,6 +466,73 @@ export async function generateTusDocxBlob(params: {
     }),
     new Paragraph({ spacing: { after: 200 } })
   );
+
+  // Permanent Furnace Instrumentation (Control & Overtemperature Sensors) Section
+  const ctrlPos = chamber.controlSensorPos;
+  const ovtPos = chamber.overtempSensorPos;
+
+  if (ctrlPos || ovtPos) {
+    children.push(
+      new Paragraph({
+        spacing: { before: 120, after: 60 },
+        children: [
+          new TextRun({
+            text: 'Permanent Furnace Instrumentation Locations (Control & Overtemp Sensors)',
+            bold: true,
+            font: 'Arial',
+            size: 20,
+            color: '1E3A8A',
+          }),
+        ],
+      }),
+      new Paragraph({
+        spacing: { after: 80 },
+        children: [
+          new TextRun({
+            text: `Per AMS 2750 Rev H Section 3.4.3, the spatial locations of permanent furnace control and overtemperature sensors are documented below relative to the internal chamber origin (X = Depth from Front Door, Y = Height from Floor, Z = Width from Left Wall):`,
+            font: 'Arial',
+            size: 18,
+            color: '334155',
+          }),
+        ],
+      }),
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: [
+          new TableRow({
+            children: [
+              createCell('Sensor Function', { header: true, widthPercent: 30 }),
+              createCell('Sensor Tag / Label', { header: true, widthPercent: 25 }),
+              createCell(`Spatial Location Coordinates (X, Y, Z in ${meta.dimUnit})`, { header: true, widthPercent: 45 }),
+            ],
+          }),
+          ...(ctrlPos
+            ? [
+                new TableRow({
+                  children: [
+                    createCell('Control Thermocouple (TC-CTRL)', { bold: true, bg: 'F8FAFC' }),
+                    createCell(ctrlPos.label || 'Control TC'),
+                    createCell(`X: ${ctrlPos.x} ${meta.dimUnit} (Depth) | Y: ${ctrlPos.y} ${meta.dimUnit} (Height) | Z: ${ctrlPos.z} ${meta.dimUnit} (Width)`),
+                  ],
+                }),
+              ]
+            : []),
+          ...(ovtPos
+            ? [
+                new TableRow({
+                  children: [
+                    createCell('Overtemperature TC (TC-OVT)', { bold: true, bg: 'F8FAFC' }),
+                    createCell(ovtPos.label || 'Overtemp TC'),
+                    createCell(`X: ${ovtPos.x} ${meta.dimUnit} (Depth) | Y: ${ovtPos.y} ${meta.dimUnit} (Height) | Z: ${ovtPos.z} ${meta.dimUnit} (Width)`),
+                  ],
+                }),
+              ]
+            : []),
+        ],
+      }),
+      new Paragraph({ spacing: { after: 200 } })
+    );
+  }
 
   // ==========================================
   // SECTION 2: 2D ISOMETRIC SCHEMATIC & WIRE GRID
