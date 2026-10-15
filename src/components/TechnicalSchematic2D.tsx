@@ -59,23 +59,48 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
 
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [activeCallout, setActiveCallout] = useState<string | null>(null);
+  
+  // Default positions for callouts
+  const [calloutPos, setCalloutPos] = useState<Record<string, {x: number, y: number}>>({
+    top: {x: 400, y: 50},
+    bottom: {x: 400, y: 600},
+    left: {x: 50, y: 300},
+    right: {x: 800, y: 300},
+    back: {x: 800, y: 100},
+    control: {x: 50, y: 100},
+    overtemp: {x: 50, y: 150},
+  });
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleMouseDown = (e: React.MouseEvent, calloutId?: string) => {
     setIsDragging(true);
     setDragStart({ x: e.clientX, y: e.clientY });
+    if (calloutId) setActiveCallout(calloutId);
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDragging) return;
     const dx = e.clientX - dragStart.x;
     const dy = e.clientY - dragStart.y;
-    setAzimuthDeg((prev) => (prev + dx * 0.75 + 360) % 360);
-    setElevationDeg((prev) => Math.max(-20, Math.min(85, prev - dy * 0.5)));
+    
+    if (activeCallout) {
+      setCalloutPos((prev) => ({
+        ...prev,
+        [activeCallout]: {
+          x: prev[activeCallout].x + dx,
+          y: prev[activeCallout].y + dy,
+        },
+      }));
+    } else {
+      setAzimuthDeg((prev) => (prev + dx * 0.75 + 360) % 360);
+      setElevationDeg((prev) => Math.max(-20, Math.min(85, prev - dy * 0.5)));
+    }
     setDragStart({ x: e.clientX, y: e.clientY });
   };
 
   const handleMouseUp = () => {
     setIsDragging(false);
+    setActiveCallout(null);
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -238,6 +263,25 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
     });
   }, [wireRiggingPlan, project3Dto2D]);
 
+  const renderCallout = (id: string, label: string, anchor3D: {x: number, y: number, z: number}) => {
+    const p = project3Dto2D(anchor3D.x, anchor3D.y, anchor3D.z);
+    const pos = calloutPos[id];
+    
+    return (
+      <g 
+        key={id}
+        onMouseDown={(e) => handleMouseDown(e, id)}
+        className="cursor-grab active:cursor-grabbing"
+      >
+        <line x1={p.x} y1={p.y} x2={pos.x} y2={pos.y} stroke="#64748B" strokeDasharray="4,4" strokeWidth="1" />
+        <rect x={pos.x - 50} y={pos.y - 12} width="100" height="24" rx="4" fill={isWhiteTheme ? '#F8FAFC' : '#1E293B'} stroke="#64748B" strokeWidth="1" />
+        <text x={pos.x} y={pos.y + 4} textAnchor="middle" fontSize="10" fill={isWhiteTheme ? '#0F172A' : '#F1F5F9'} fontWeight="bold">
+          {label}
+        </text>
+      </g>
+    );
+  };
+
   // Capture High-Res PNG image of the SVG for Word Report export
   const exportImage = useCallback(() => {
     if (!svgRef.current) return '';
@@ -326,31 +370,8 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
     >
       {/* Top Floating Control Bar */}
       <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
-        {/* Title & Style Badge */}
-        <div
-          className={`pointer-events-auto rounded-xl px-3.5 py-2 text-xs flex items-center gap-3 shadow-md border ${
-            isWhiteTheme
-              ? 'bg-slate-100/95 border-slate-300 text-slate-900'
-              : 'bg-slate-900/90 border-slate-700 text-slate-200'
-          }`}
-        >
-          <div className="flex items-center gap-1.5 font-bold text-blue-600">
-            <Layers className="w-4 h-4" />
-            <span>2D ISOMETRIC SCHEMATIC (AMS 2750 / PICTURE 1)</span>
-          </div>
-          <span className="text-slate-400">|</span>
-          <span className="font-mono text-slate-600 dark:text-slate-300 font-semibold" title="Qualified Work Zone Dimensions">
-            QWZ: {qwz.length} × {qwz.width} × {qwz.height} {dimUnit} (
-            {dimUnit === 'mm'
-              ? `${((qwz.length * qwz.width * qwz.height) / 1_000_000_000).toFixed(2)} m³`
-              : `${((qwz.length * qwz.width * qwz.height) / 1728).toFixed(1)} ft³`}
-            )
-          </span>
-          <span className="text-slate-400">|</span>
-          <span className="font-mono text-emerald-600 font-bold">
-            {channels.length} Thermocouples (Wire Web Active)
-          </span>
-        </div>
+        {/* Empty container to maintain layout */}
+        <div />
 
         {/* View Angle Presets & Export Actions */}
         <div
