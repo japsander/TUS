@@ -21,6 +21,8 @@ import {
   Sun,
   Moon,
   Sparkles,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 
 interface TechnicalSchematic2DProps {
@@ -60,6 +62,7 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [activeCallout, setActiveCallout] = useState<string | null>(null);
+  const [rotationLocked, setRotationLocked] = useState(false);
   
   // Default positions for callouts
   const [calloutPos, setCalloutPos] = useState<Record<string, {x: number, y: number}>>({
@@ -83,6 +86,7 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
     const dx = e.clientX - dragStart.x;
     const dy = e.clientY - dragStart.y;
     
+    // If dragging a callout, move it
     if (activeCallout) {
       setCalloutPos((prev) => ({
         ...prev,
@@ -91,7 +95,8 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
           y: prev[activeCallout].y + dy,
         },
       }));
-    } else {
+    } else if (!rotationLocked) {
+      // If rotation is not locked, rotate view
       setAzimuthDeg((prev) => (prev + dx * 0.75 + 360) % 360);
       setElevationDeg((prev) => Math.max(-20, Math.min(85, prev - dy * 0.5)));
     }
@@ -270,7 +275,7 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
     return (
       <g 
         key={id}
-        onMouseDown={(e) => handleMouseDown(e, id)}
+        onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, id); }}
         className="cursor-grab active:cursor-grabbing"
       >
         <line x1={p.x} y1={p.y} x2={pos.x} y2={pos.y} stroke="#64748B" strokeDasharray="4,4" strokeWidth="1" />
@@ -367,6 +372,10 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
           ? 'bg-white border-slate-300 text-slate-800'
           : 'bg-slate-950 border-slate-800 text-slate-100'
       }`}
+      onMouseDown={(e) => handleMouseDown(e)}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
     >
       {/* Top Floating Control Bar */}
       <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
@@ -427,6 +436,20 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
           </div>
 
           <div className="w-[1px] h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
+
+          <button
+            onClick={() => setRotationLocked(!rotationLocked)}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition-colors flex items-center gap-1.5 ${
+              rotationLocked
+                ? 'bg-amber-950/80 border-amber-700 text-amber-300'
+                : 'bg-slate-800 border-slate-700 text-slate-400'
+            }`}
+            title="Lock rotation to allow dragging of labels"
+          >
+            {rotationLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+            <span>{rotationLocked ? 'Rotation Locked' : 'Rotation Unlocked'}</span>
+          </button>
+
 
           {/* 360° Rotation controls */}
           <div className="flex items-center gap-1 px-1">
