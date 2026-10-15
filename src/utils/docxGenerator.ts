@@ -964,34 +964,53 @@ export async function generateTusDocxBlob(params: {
         }),
       ],
     }),
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [
-        new TableRow({
-          children: [
+    (() => {
+      const hasEngineer = meta.responsibleEngineerName && meta.responsibleEngineerName.trim() !== '';
+      const signoffHeaders = hasEngineer
+        ? [
             createCell('Pyrometry Technician', { header: true, widthPercent: 33 }),
             createCell('Quality Assurance Manager', { header: true, widthPercent: 33 }),
             createCell('Responsible Metallurgist / Level 3', { header: true, widthPercent: 34 }),
-          ],
-        }),
-        new TableRow({
-          children: [
+          ]
+        : [
+            createCell('Pyrometry Technician', { header: true, widthPercent: 50 }),
+            createCell('Quality Assurance Manager', { header: true, widthPercent: 50 }),
+          ];
+
+      const signoffCells = hasEngineer
+        ? [
             createCell(
-              `Name: ${meta.technicianName}\nTitle: ${meta.technicianTitle}\n\nSignature: _______________________\n\nDate: ${meta.date}`,
+              `Name: ${meta.technicianName || '[ Unsigned ]'}\\nTitle: ${meta.technicianTitle}\\n\\nSignature: ______________________\\n\\nDate: ${meta.date}`,
               { bg: 'F8FAFC' }
             ),
             createCell(
-              `Name: ${meta.qualityManagerName}\nTitle: ${meta.qualityManagerTitle}\n\nSignature: _______________________\n\nDate: ${meta.date}`,
+              `Name: ${meta.qualityManagerName || '[ Unsigned ]'}\\nTitle: ${meta.qualityManagerTitle}\\n\\nSignature: ______________________\\n\\nDate: ${meta.date}`,
               { bg: 'F8FAFC' }
             ),
             createCell(
-              `Name: ${meta.responsibleEngineerName}\nTitle: Pyrometry Level 3 Authority\n\nSignature: _______________________\n\nDate: ${meta.date}`,
+              `Name: ${meta.responsibleEngineerName}\\nTitle: Pyrometry Level 3 Authority\\n\\nSignature: ______________________\\n\\nDate: ${meta.date}`,
               { bg: 'F8FAFC' }
             ),
-          ],
-        }),
-      ],
-    }),
+          ]
+        : [
+            createCell(
+              `Name: ${meta.technicianName || '[ Unsigned ]'}\\nTitle: ${meta.technicianTitle}\\n\\nSignature: ______________________\\n\\nDate: ${meta.date}`,
+              { bg: 'F8FAFC' }
+            ),
+            createCell(
+              `Name: ${meta.qualityManagerName || '[ Unsigned ]'}\\nTitle: ${meta.qualityManagerTitle}\\n\\nSignature: ______________________\\n\\nDate: ${meta.date}`,
+              { bg: 'F8FAFC' }
+            ),
+          ];
+
+      return new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: [
+          new TableRow({ children: signoffHeaders }),
+          new TableRow({ children: signoffCells }),
+        ],
+      });
+    })(),
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: 200 },
