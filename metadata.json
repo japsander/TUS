@@ -1,0 +1,6 @@
+{
+  "name": "Nadcap & AMS 2750 Rev H TUS Report & 3D Furnace Mapper",
+  "description": "Generate 100% compliant Nadcap AC7102/8 & AMS 2750 Rev H Temperature Uniformity Survey (TUS) Word documents (.docx) with interactive 3D isometric furnace modeling, thermocouple wire harness routing, and wall/floor/ceiling offset calculations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
