@@ -10,7 +10,7 @@ export interface FurnaceChamber {
   width: number;  // Left-to-Right
   height: number; // Floor-to-Ceiling
   shape: 'rectangular' | 'cylindrical';
-  feedthroughWall: 'rear' | 'roof' | 'left' | 'right';
+  feedthroughWall: 'rear' | 'roof' | 'left' | 'right' | 'under_door';
   feedthroughPos: { x: number; y: number; z: number };
 }
 
@@ -50,6 +50,11 @@ export interface ThermocoupleChannel {
   x: number;
   y: number;
   z: number;
+
+  // Normalized relative coordinate inside QWZ [0, 1]
+  ux?: number;
+  uy?: number;
+  uz?: number;
   
   // Correction factors (keyed by setpoint ID)
   correctionFactors: Record<string, number>;

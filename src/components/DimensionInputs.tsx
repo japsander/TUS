@@ -53,7 +53,7 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
   onUpdateInstrument,
   onNavigateTab,
 }) => {
-  const [autoCenter, setAutoCenter] = useState<boolean>(true);
+  const [autoCenter, setAutoCenter] = useState<boolean>(false);
 
   const volumeM3 = calculateVolumeInM3(qwz, dimUnit);
   const volumeCuFt = calculateVolumeInCuFt(qwz, dimUnit);
@@ -76,7 +76,9 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
 
   // Handler for chamber size changes
   const handleChamberChange = (field: keyof FurnaceChamber, val: number | string) => {
-    const num = Math.max(1, typeof val === 'number' ? val : parseFloat(val) || 0);
+    const raw = typeof val === 'number' ? val : parseFloat(val);
+    if (isNaN(raw) || raw <= 0) return;
+    const num = raw;
     const updatedChamber = { ...chamber, [field]: num };
 
     if (field === 'length') {
@@ -110,29 +112,24 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
 
   // Handler for QWZ changes: ensures clearances and chamber auto-adjust seamlessly
   const handleQWZChange = (field: keyof QualifiedWorkZone, val: number | string) => {
-    const num = Math.max(1, typeof val === 'number' ? val : parseFloat(val) || 0);
+    const raw = typeof val === 'number' ? val : parseFloat(val);
+    if (isNaN(raw) || raw <= 0) return;
+    const num = raw;
     const updatedQWZ = { ...qwz, [field]: num };
 
-    // Standard default clearance if undefined or zero
+    // Keep existing clearances or standard defaults if not set
     const defaultClearance = dimUnit === 'mm' ? 150 : 6;
-    const offL = qwz.offsetLeft > 0 ? qwz.offsetLeft : defaultClearance;
-    const offR = qwz.offsetRight > 0 ? qwz.offsetRight : defaultClearance;
-    const offF = qwz.offsetFront > 0 ? qwz.offsetFront : defaultClearance;
-    const offB = qwz.offsetRear > 0 ? qwz.offsetRear : defaultClearance;
-    const offFloor = qwz.offsetFloor > 0 ? qwz.offsetFloor : (dimUnit === 'mm' ? 120 : 5);
-    const offCeil = qwz.offsetCeiling > 0 ? qwz.offsetCeiling : (dimUnit === 'mm' ? 180 : 7);
-
-    updatedQWZ.offsetLeft = offL;
-    updatedQWZ.offsetRight = offR;
-    updatedQWZ.offsetFront = offF;
-    updatedQWZ.offsetRear = offB;
-    updatedQWZ.offsetFloor = offFloor;
-    updatedQWZ.offsetCeiling = offCeil;
+    updatedQWZ.offsetLeft = qwz.offsetLeft > 0 ? qwz.offsetLeft : defaultClearance;
+    updatedQWZ.offsetRight = qwz.offsetRight > 0 ? qwz.offsetRight : defaultClearance;
+    updatedQWZ.offsetFront = qwz.offsetFront > 0 ? qwz.offsetFront : defaultClearance;
+    updatedQWZ.offsetRear = qwz.offsetRear > 0 ? qwz.offsetRear : defaultClearance;
+    updatedQWZ.offsetFloor = qwz.offsetFloor > 0 ? qwz.offsetFloor : (dimUnit === 'mm' ? 120 : 5);
+    updatedQWZ.offsetCeiling = qwz.offsetCeiling > 0 ? qwz.offsetCeiling : (dimUnit === 'mm' ? 180 : 7);
 
     // Check if chamber needs to be expanded so it encloses the new QWZ + clearances
-    const reqL = (field === 'length' ? num : qwz.length) + offF + offB;
-    const reqW = (field === 'width' ? num : qwz.width) + offL + offR;
-    const reqH = (field === 'height' ? num : qwz.height) + offFloor + offCeil;
+    const reqL = updatedQWZ.offsetFront + updatedQWZ.length + updatedQWZ.offsetRear;
+    const reqW = updatedQWZ.offsetLeft + updatedQWZ.width + updatedQWZ.offsetRight;
+    const reqH = updatedQWZ.offsetFloor + updatedQWZ.height + updatedQWZ.offsetCeiling;
 
     let newChamber = { ...chamber };
     let chamberChanged = false;
@@ -160,7 +157,9 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
 
   // Direct manual override of clearances/offsets
   const handleOffsetChange = (field: keyof QualifiedWorkZone, val: string) => {
-    const num = Math.max(0, parseFloat(val) || 0);
+    const raw = parseFloat(val);
+    if (isNaN(raw) || raw < 0) return;
+    const num = raw;
     const updated = { ...qwz, [field]: num };
 
     // Ensure chamber fits QWZ + updated clearance
@@ -412,16 +411,18 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
               <select
                 value={chamber.feedthroughWall}
                 onChange={(e) => {
-                  const wall = e.target.value as 'rear' | 'roof' | 'left' | 'right';
+                  const wall = e.target.value as 'rear' | 'roof' | 'left' | 'right' | 'under_door';
                   let ftPos = { ...chamber.feedthroughPos };
                   if (wall === 'rear') ftPos = { x: chamber.length, y: chamber.height * 0.75, z: chamber.width / 2 };
                   else if (wall === 'roof') ftPos = { x: chamber.length / 2, y: chamber.height, z: chamber.width / 2 };
                   else if (wall === 'left') ftPos = { x: chamber.length / 2, y: chamber.height * 0.75, z: 0 };
                   else if (wall === 'right') ftPos = { x: chamber.length / 2, y: chamber.height * 0.75, z: chamber.width };
+                  else if (wall === 'under_door') ftPos = { x: 0, y: 15, z: chamber.width / 2 };
                   onUpdateChamber({ ...chamber, feedthroughWall: wall, feedthroughPos: ftPos });
                 }}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
               >
+                <option value="under_door">Under Door / Front Threshold Seal</option>
                 <option value="rear">Rear Wall Penetration Port</option>
                 <option value="roof">Roof / Ceiling Feedthrough Gland</option>
                 <option value="left">Left Side Port</option>

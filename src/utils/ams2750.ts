@@ -115,10 +115,19 @@ export function rescaleChannelsToQWZ(
   const oldH = Math.max(1, oldQWZ.height);
 
   return channels.map((ch) => {
-    // Normalized position inside old QWZ [0, 1]
-    const ux = Math.max(0, Math.min(1, (ch.x - oldQWZ.offsetFront) / oldL));
-    const uy = Math.max(0, Math.min(1, (ch.y - oldQWZ.offsetFloor) / oldH));
-    const uz = Math.max(0, Math.min(1, (ch.z - oldQWZ.offsetLeft) / oldW));
+    // Canonical normalized relative position inside QWZ [0, 1]
+    const ux =
+      ch.ux !== undefined
+        ? ch.ux
+        : Math.max(0, Math.min(1, (ch.x - oldQWZ.offsetFront) / oldL));
+    const uy =
+      ch.uy !== undefined
+        ? ch.uy
+        : Math.max(0, Math.min(1, (ch.y - oldQWZ.offsetFloor) / oldH));
+    const uz =
+      ch.uz !== undefined
+        ? ch.uz
+        : Math.max(0, Math.min(1, (ch.z - oldQWZ.offsetLeft) / oldW));
 
     // Map to new QWZ coordinate space
     const newX = Math.round((newQWZ.offsetFront + ux * newQWZ.length) * 10) / 10;
@@ -132,6 +141,9 @@ export function rescaleChannelsToQWZ(
       x: newX,
       y: newY,
       z: newZ,
+      ux,
+      uy,
+      uz,
       ...dist,
     };
   });
@@ -291,12 +303,20 @@ export function generateStandardAMS2750Sensors(
     }
   }
 
+  const qL = Math.max(1, qwz.length);
+  const qH = Math.max(1, qwz.height);
+  const qW = Math.max(1, qwz.width);
+
   const today = new Date().toISOString().split('T')[0];
   const expiry = new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString().split('T')[0];
 
   return rawList.map((p, index) => {
     const channelNumber = p.num;
     const dist = computeSensorDistances(p.x, p.y, p.z, chamber);
+    const ux = Math.max(0, Math.min(1, (p.x - qwz.offsetFront) / qL));
+    const uy = Math.max(0, Math.min(1, (p.y - qwz.offsetFloor) / qH));
+    const uz = Math.max(0, Math.min(1, (p.z - qwz.offsetLeft) / qW));
+
     return {
       id: `tc-${channelNumber}`,
       channelNumber,
@@ -310,6 +330,9 @@ export function generateStandardAMS2750Sensors(
       x: p.x,
       y: p.y,
       z: p.z,
+      ux,
+      uy,
+      uz,
       correctionFactors: {
         'sp-1': -0.3 + (index % 5) * 0.15,
         'sp-2': -0.2 + (index % 4) * 0.15,
