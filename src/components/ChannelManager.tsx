@@ -69,7 +69,7 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
       channelNumber: nextNum,
       label: `TC ${nextNum}: User Custom Location`,
       type: 'N',
-      rollLotNumber: `LOT-2026-N${100 + (nextNum % 4)}`,
+      rollLotNumber: '',
       calibrationDate: today,
       expirationDate: expiry,
       recorderChannel: `CH-${String(nextNum).padStart(2, '0')}`,

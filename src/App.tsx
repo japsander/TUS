@@ -76,56 +76,32 @@ export default function App() {
 
   // Chamber in mm (UK Standard)
   const [chamber, setChamber] = useState<FurnaceChamber>({
-    length: 1200, // Front-to-Rear (Depth) in mm
-    width: 1000,  // Left-to-Right in mm
-    height: 1000, // Floor-to-Ceiling in mm
+    length: 0,
+    width: 0,
+    height: 0,
     shape: 'rectangular',
     feedthroughWall: 'rear',
-    feedthroughPos: { x: 1200, y: 750, z: 500 },
-    controlSensorPos: { x: 600, y: 1000, z: 500, label: 'Roof Center (Control TC)' },
-    overtempSensorPos: { x: 600, y: 1000, z: 200, label: 'Ceiling Limit (Overtemp TC)' },
+    feedthroughPos: { x: 0, y: 0, z: 0 },
+    controlSensorPos: { x: 0, y: 0, z: 0, label: 'Roof Center (Control TC)' },
+    overtempSensorPos: { x: 0, y: 0, z: 0, label: 'Ceiling Limit (Overtemp TC)' },
   });
 
   // Qualified Work Zone in mm (UK Standard)
   const [qwz, setQWZ] = useState<QualifiedWorkZone>({
-    length: 900,
-    width: 700,
-    height: 700,
-    offsetLeft: 150,
-    offsetRight: 150,
-    offsetFront: 150,
-    offsetRear: 150,
-    offsetFloor: 120,
-    offsetCeiling: 180,
+    length: 0,
+    width: 0,
+    height: 0,
+    offsetLeft: 0,
+    offsetRight: 0,
+    offsetFront: 0,
+    offsetRear: 0,
+    offsetFloor: 0,
+    offsetCeiling: 0,
   });
 
-  // Channels / Thermocouples: Initialized to Picture 1 Standard 21-Point Layout!
-  const [channels, setChannels] = useState<ThermocoupleChannel[]>(() =>
-    generateStandardAMS2750Sensors(
-      {
-        length: 1200,
-        width: 1000,
-        height: 1000,
-        shape: 'rectangular',
-        feedthroughWall: 'rear',
-        feedthroughPos: { x: 1200, y: 750, z: 500 },
-      },
-      {
-        length: 900,
-        width: 700,
-        height: 700,
-        offsetLeft: 150,
-        offsetRight: 150,
-        offsetFront: 150,
-        offsetRear: 150,
-        offsetFloor: 120,
-        offsetCeiling: 180,
-      },
-      21 // 21-point pattern from Picture 1
-    )
-  );
-
-  const [selectedChannelId, setSelectedChannelId] = useState<string | null>('tc-1');
+  // Channels / Thermocouples: Empty by default until a Furnace Architecture Preset is selected
+  const [channels, setChannels] = useState<ThermocoupleChannel[]>([]);
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
 
   // Survey Metadata (UK & Nadcap / AMS 2750 Rev H Standard)
   const [meta, setMeta] = useState<SurveyMetadata>({
@@ -141,8 +117,8 @@ export default function App() {
     surveyReason: 'Periodic',
     furnaceClass: 2,
     instrumentationType: 'B',
-    operatingTempMin: 0,
-    operatingTempMax: 0,
+    operatingTempMin: 300,
+    operatingTempMax: 1100,
     unitSystem: 'metric',
     tempUnit: '°C',
     dimUnit: 'mm',
@@ -150,7 +126,7 @@ export default function App() {
     heatingMethod: '',
     loadCondition: 'Simulated Production Load',
     fanCondition: '',
-    dataIntervalSeconds: 60,
+    dataIntervalSeconds: 0,
     technicianName: '',
     technicianTitle: '',
     qualityManagerName: '',
@@ -545,7 +521,146 @@ export default function App() {
   const setpointAnalyses = setpoints.map((sp) =>
     evaluateSetpoint(sp, channels, meta.furnaceClass, tempUnit, instrument.maxPermissibleError)
   );
-  const isOverallConformant = setpointAnalyses.every((sa) => sa.passed) && channels.length >= minSensors;
+  const isOverallConformant = checklist.every((item) => item.compliant);
+
+  // Auto-synchronize Audit Criteria Verification Matrix with field completeness & live TUS results
+  useEffect(() => {
+    setChecklist((prevChecklist) => {
+      const mpeLimit = meta.instrumentationType === 'A' || meta.instrumentationType === 'B' ? 0.6 : 1.1;
+
+      // Check presence of imported CSV data / readings
+      const hasCsvData = trendData.length > 0 || setpoints.some((sp) => Object.keys(sp.readings).length > 0);
+
+      // Working (non-failed) sensors evaluation per AMS 2750 Rev H Section 3.4.8
+      const workingChannels = channels.filter((ch) => !ch.failed);
+      const failedChannelsCount = channels.length - workingChannels.length;
+      const maxAllowedFailures = channels.length > 16 ? 2 : 1;
+      const isSensorCountCompliant =
+        hasCsvData &&
+        workingChannels.length >= minSensors &&
+        failedChannelsCount <= maxAllowedFailures;
+
+      // Soak Duration (≥ 30 min) & Sensor Thermal Stabilization from CSV Data (nc-6)
+      const isSoakDurationCompliant =
+        hasCsvData &&
+        setpoints.length > 0 &&
+        setpoints.every((sp) => {
+          const hasTimestamps = Boolean(sp.soakStartTime?.trim() && sp.soakEndTime?.trim());
+          const isDurationOk = (sp.soakDurationMinutes || 0) >= 30;
+          const spAnalysis = setpointAnalyses.find((sa) => sa.setpointId === sp.id);
+          const isStabilized = spAnalysis ? spAnalysis.passed : false;
+          return hasTimestamps && isDurationOk && isStabilized;
+        });
+
+      // Completeness & Compliance Evaluators
+      const isNc1Complete = setpoints.length > 0 && meta.operatingTempMin > 0 && meta.operatingTempMax > 0 && meta.operatingTempMax > meta.operatingTempMin;
+      const isNc2Complete = qwz.length > 0 && qwz.width > 0 && qwz.height > 0 && chamber.length > 0 && chamber.width > 0 && chamber.height > 0;
+      const isNc4Complete = channels.length > 0 && channels.every((ch) => ch.rollLotNumber?.trim() && ch.calibrationDate?.trim());
+      const isNc5Complete = meta.dataIntervalSeconds > 0 && meta.dataIntervalSeconds <= 120;
+      const isNc7Complete = hasCsvData && setpoints.length > 0 && setpointAnalyses.every((sa) => sa.passed);
+      const isNc8Complete = Boolean(
+        instrument.manufacturer?.trim() &&
+        instrument.model?.trim() &&
+        instrument.serialNumber?.trim() &&
+        instrument.calibrationDate?.trim() &&
+        instrument.calibrationDueDate?.trim() &&
+        instrument.traceabilityNumber?.trim() &&
+        instrument.maxPermissibleError <= mpeLimit
+      );
+      const isNc9Complete = Boolean(meta.atmosphere?.trim() && meta.heatingMethod?.trim() && meta.fanCondition?.trim());
+      const isNc10Complete = Boolean(meta.technicianName?.trim() && meta.qualityManagerName?.trim());
+
+      let changed = false;
+      const updated = prevChecklist.map((item) => {
+        let newCompliant = item.compliant;
+        let newNotes = item.notes;
+
+        if (item.id === 'nc-1') {
+          newCompliant = isNc1Complete;
+          newNotes = isNc1Complete
+            ? `Survey verified across operating temperature envelope (${meta.operatingTempMin}°${tempUnit} to ${meta.operatingTempMax}°${tempUnit}).`
+            : 'NON-COMPLIANT: Operating temperature envelope or setpoints incomplete.';
+        } else if (item.id === 'nc-2') {
+          newCompliant = isNc2Complete;
+          newNotes = isNc2Complete
+            ? `Qualified Work Zone dimensions (${qwz.length}×${qwz.width}×${qwz.height} ${dimUnit}) and 6-way clearances verified.`
+            : 'NON-COMPLIANT: Chamber or Qualified Work Zone dimensions incomplete.';
+        } else if (item.id === 'nc-3') {
+          newCompliant = isSensorCountCompliant;
+          if (!hasCsvData) {
+            newNotes = 'NON-COMPLIANT: No CSV survey data imported. Import datalogger CSV to verify working sensors.';
+          } else if (workingChannels.length < minSensors) {
+            newNotes = `NON-COMPLIANT: ${workingChannels.length} working sensors in CSV data, but minimum ${minSensors} required for ${volumeM3.toFixed(3)} m³ volume per AMS 2750 Table 11 (${failedChannelsCount} failed).`;
+          } else if (failedChannelsCount > maxAllowedFailures) {
+            newNotes = `NON-COMPLIANT: ${failedChannelsCount} sensor failures exceeded AMS 2750 Rev H allowance (Max ${maxAllowedFailures} allowed for ${channels.length} sensors).`;
+          } else {
+            newNotes = `Verified ${workingChannels.length} working sensors in imported CSV data (Minimum required: ${minSensors} for ${volumeM3.toFixed(3)} m³ volume${failedChannelsCount > 0 ? `, ${failedChannelsCount} allowed failure within AMS 2750 limit` : ''}).`;
+          }
+        } else if (item.id === 'nc-4') {
+          newCompliant = isNc4Complete;
+          newNotes = isNc4Complete
+            ? 'Thermocouple wire roll batch lot and calibration correction factors verified.'
+            : 'NON-COMPLIANT: Thermocouple wire roll lot numbers or calibration details incomplete.';
+        } else if (item.id === 'nc-5') {
+          newCompliant = isNc5Complete;
+          newNotes = isNc5Complete
+            ? `Continuous data logging at ${meta.dataIntervalSeconds}-second intervals verified from imported CSV timestamps.`
+            : 'NON-COMPLIANT: Data logging interval empty. Import datalogger CSV to auto-detect logging interval.';
+        } else if (item.id === 'nc-6') {
+          newCompliant = isSoakDurationCompliant;
+          if (!hasCsvData) {
+            newNotes = 'NON-COMPLIANT: No CSV survey data imported. Import datalogger CSV to verify thermal stabilization & soak duration.';
+          } else if (!isSoakDurationCompliant) {
+            newNotes = 'NON-COMPLIANT: Imported CSV data shows soak duration < 30 minutes, missing timestamps, or sensors failed to stabilize within tolerance.';
+          } else {
+            newNotes = '30-minute steady-state soak duration and sensor thermal stabilization verified from imported CSV data.';
+          }
+        } else if (item.id === 'nc-7') {
+          newCompliant = isNc7Complete;
+          newNotes = isNc7Complete
+            ? `All setpoint temperature spreads satisfy Class ${meta.furnaceClass} tolerance (±${tolerance}°${tempUnit}).`
+            : `NON-COMPLIANT: Imported survey data incomplete or temperature spread exceeded Class ${meta.furnaceClass} tolerance (±${tolerance}°${tempUnit}).`;
+        } else if (item.id === 'nc-8') {
+          newCompliant = isNc8Complete;
+          newNotes = isNc8Complete
+            ? `${instrument.model || 'Field Instrument'} (S/N: ${instrument.serialNumber}) calibrated with ${instrument.traceabilityNumber} traceability.`
+            : `NON-COMPLIANT: Instrument details, serial number, calibration dates, traceability number, or MPE limit (${mpeLimit}°C) incomplete.`;
+        } else if (item.id === 'nc-9') {
+          newCompliant = isNc9Complete;
+          newNotes = isNc9Complete
+            ? `Furnace atmosphere (${meta.atmosphere}), heating method (${meta.heatingMethod}), and fan state (${meta.fanCondition}) verified.`
+            : 'NON-COMPLIANT: Furnace atmosphere, heating method, or fan operating parameters incomplete.';
+        } else if (item.id === 'nc-10') {
+          newCompliant = isNc10Complete;
+          newNotes = isNc10Complete
+            ? `Formal sign-off approvals verified for Technician (${meta.technicianName}) and Quality Manager (${meta.qualityManagerName}).`
+            : 'NON-COMPLIANT: Authorised signatory names (Technician or Quality Manager) incomplete.';
+        }
+
+        if (newCompliant !== item.compliant || newNotes !== item.notes) {
+          changed = true;
+          return { ...item, compliant: newCompliant, notes: newNotes };
+        }
+        return item;
+      });
+
+      return changed ? updated : prevChecklist;
+    });
+  }, [
+    channels,
+    minSensors,
+    volumeM3,
+    setpoints,
+    setpointAnalyses,
+    trendData,
+    meta,
+    qwz,
+    chamber,
+    dimUnit,
+    tempUnit,
+    tolerance,
+    instrument,
+  ]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
@@ -567,8 +682,14 @@ export default function App() {
                 <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase flex items-center gap-1">
                   <Globe2 className="w-3 h-3 inline" /> UK Standard (Metric)
                 </span>
-                <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase">
-                  100% Compliant
+                <span
+                  className={`text-[10px] font-bold tracking-wider px-2 py-0.5 rounded uppercase border ${
+                    isOverallConformant
+                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                      : 'bg-red-500/20 text-red-400 border-red-500/30'
+                  }`}
+                >
+                  {isOverallConformant ? 'PASS — CONFORMANT' : 'FAIL — NON-CONFORMANT'}
                 </span>
               </div>
               <p className="text-xs text-slate-400 flex items-center gap-2">
@@ -718,7 +839,11 @@ export default function App() {
           <div className="hidden sm:flex items-center gap-2 text-slate-500 text-[11px]">
             <span>PRI Nadcap AC7102/8</span>
             <span>•</span>
-            <span>UKAS / ISO 17025 Traceable</span>
+            <span>
+              {instrument.traceabilityNumber?.trim()
+                ? `Traceability: ${instrument.traceabilityNumber}`
+                : 'No Calibration Details Entered'}
+            </span>
           </div>
         </div>
       </header>
@@ -1174,6 +1299,28 @@ export default function App() {
                       value={meta.fanCondition}
                       onChange={(e) => setMeta({ ...meta, fanCondition: e.target.value })}
                       className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1">Qualified Operating Temp Min ({tempUnit})</label>
+                    <input
+                      type="number"
+                      value={meta.operatingTempMin || ''}
+                      onChange={(e) => setMeta({ ...meta, operatingTempMin: parseFloat(e.target.value) || 0 })}
+                      placeholder="e.g. 300"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1">Qualified Operating Temp Max ({tempUnit})</label>
+                    <input
+                      type="number"
+                      value={meta.operatingTempMax || ''}
+                      onChange={(e) => setMeta({ ...meta, operatingTempMax: parseFloat(e.target.value) || 0 })}
+                      placeholder="e.g. 1100"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
                     />
                   </div>
 

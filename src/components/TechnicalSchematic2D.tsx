@@ -334,19 +334,18 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
     return () => clearTimeout(timer);
   }, []);
 
+  const [activeViewPreset, setActiveViewPreset] = useState<'balanced' | 'iso45' | 'top'>('balanced');
+
   // Preset Angle Handlers
-  const handleSetPreset = (preset: 'picture1' | 'frontRight' | 'frontLeft' | 'top') => {
-    if (preset === 'picture1') {
+  const handleSetPreset = (preset: 'balanced' | 'iso45' | 'top') => {
+    setActiveViewPreset(preset);
+    if (preset === 'balanced') {
       setAzimuthDeg(33);
       setElevationDeg(20);
       setZoom(1.0);
-    } else if (preset === 'frontRight') {
+    } else if (preset === 'iso45') {
       setAzimuthDeg(45);
       setElevationDeg(30);
-      setZoom(1.0);
-    } else if (preset === 'frontLeft') {
-      setAzimuthDeg(-35);
-      setElevationDeg(25);
       setZoom(1.0);
     } else if (preset === 'top') {
       setAzimuthDeg(0);
@@ -391,24 +390,38 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
           }`}
         >
           <button
-            onClick={() => handleSetPreset('picture1')}
-            className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white shadow-sm hover:bg-blue-500 cursor-pointer"
-            title="Exact orientation and layout as Picture 1"
+            onClick={() => handleSetPreset('balanced')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
+              activeViewPreset === 'balanced'
+                ? 'bg-blue-600 text-white font-bold shadow-sm hover:bg-blue-500'
+                : isWhiteTheme
+                ? 'text-slate-700 hover:bg-slate-200'
+                : 'text-slate-300 hover:bg-slate-800'
+            }`}
+            title="Balanced 3D Isometric View"
           >
-            Picture 1 Standard
+            Balanced View
           </button>
           <button
-            onClick={() => handleSetPreset('frontRight')}
-            className={`px-2 py-1.5 rounded-lg text-xs font-medium cursor-pointer ${
-              isWhiteTheme ? 'text-slate-700 hover:bg-slate-200' : 'text-slate-300 hover:bg-slate-800'
+            onClick={() => handleSetPreset('iso45')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
+              activeViewPreset === 'iso45'
+                ? 'bg-blue-600 text-white font-bold shadow-sm hover:bg-blue-500'
+                : isWhiteTheme
+                ? 'text-slate-700 hover:bg-slate-200'
+                : 'text-slate-300 hover:bg-slate-800'
             }`}
           >
             Isometric 45°
           </button>
           <button
             onClick={() => handleSetPreset('top')}
-            className={`px-2 py-1.5 rounded-lg text-xs font-medium cursor-pointer ${
-              isWhiteTheme ? 'text-slate-700 hover:bg-slate-200' : 'text-slate-300 hover:bg-slate-800'
+            className={`px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
+              activeViewPreset === 'top'
+                ? 'bg-blue-600 text-white font-bold shadow-sm hover:bg-blue-500'
+                : isWhiteTheme
+                ? 'text-slate-700 hover:bg-slate-200'
+                : 'text-slate-300 hover:bg-slate-800'
             }`}
           >
             Plan View
@@ -897,8 +910,8 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
                   {/* Triangle Path: Peak at (tx, topY), bottom-right (rightX, bottomY), bottom-left (leftX, bottomY) */}
                   <polygon
                     points={`${tx},${topY} ${rightX},${bottomY} ${leftX},${bottomY}`}
-                    fill={isSelected ? '#FEF08A' : '#FFFFFF'}
-                    stroke={isSelected ? '#DC2626' : '#000000'}
+                    fill={ch.failed ? '#FECACA' : (isSelected ? '#FEF08A' : '#FFFFFF')}
+                    stroke={ch.failed ? '#B91C1C' : (isSelected ? '#DC2626' : '#000000')}
                     strokeWidth={isSelected ? '2.4' : '1.8'}
                     strokeLinejoin="round"
                     filter="url(#badge-shadow)"

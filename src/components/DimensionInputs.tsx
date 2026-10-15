@@ -95,23 +95,23 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
   // Sync local inputs when parent chamber/qwz props change (e.g., presets)
   useEffect(() => {
     setChamberInputs({
-      length: String(chamber.length),
-      width: String(chamber.width),
-      height: String(chamber.height),
+      length: chamber.length > 0 ? String(chamber.length) : '',
+      width: chamber.width > 0 ? String(chamber.width) : '',
+      height: chamber.height > 0 ? String(chamber.height) : '',
     });
   }, [chamber.length, chamber.width, chamber.height]);
 
   useEffect(() => {
     setQwzInputs({
-      length: String(qwz.length),
-      width: String(qwz.width),
-      height: String(qwz.height),
-      offsetLeft: String(qwz.offsetLeft),
-      offsetRight: String(qwz.offsetRight),
-      offsetFront: String(qwz.offsetFront),
-      offsetRear: String(qwz.offsetRear),
-      offsetFloor: String(qwz.offsetFloor),
-      offsetCeiling: String(qwz.offsetCeiling),
+      length: qwz.length > 0 ? String(qwz.length) : '',
+      width: qwz.width > 0 ? String(qwz.width) : '',
+      height: qwz.height > 0 ? String(qwz.height) : '',
+      offsetLeft: qwz.offsetLeft > 0 ? String(qwz.offsetLeft) : '',
+      offsetRight: qwz.offsetRight > 0 ? String(qwz.offsetRight) : '',
+      offsetFront: qwz.offsetFront > 0 ? String(qwz.offsetFront) : '',
+      offsetRear: qwz.offsetRear > 0 ? String(qwz.offsetRear) : '',
+      offsetFloor: qwz.offsetFloor > 0 ? String(qwz.offsetFloor) : '',
+      offsetCeiling: qwz.offsetCeiling > 0 ? String(qwz.offsetCeiling) : '',
     });
   }, [
     qwz.length,

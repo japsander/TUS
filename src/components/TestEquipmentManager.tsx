@@ -48,13 +48,18 @@ export const TestEquipmentManager: React.FC<TestEquipmentManagerProps> = ({
 }) => {
   // Calculate Calibration Validity Status
   const today = new Date();
+  const hasCalDetails = Boolean(
+    instrument.calibrationDate?.trim() &&
+    instrument.calibrationDueDate?.trim() &&
+    instrument.traceabilityNumber?.trim()
+  );
   const dueDate = instrument.calibrationDueDate ? new Date(instrument.calibrationDueDate) : null;
   const calDate = instrument.calibrationDate ? new Date(instrument.calibrationDate) : null;
 
   let daysRemaining: number | null = null;
-  let calStatus: 'valid' | 'expiring' | 'expired' = 'valid';
+  let calStatus: 'valid' | 'expiring' | 'expired' | 'missing' = 'missing';
 
-  if (dueDate && !isNaN(dueDate.getTime())) {
+  if (hasCalDetails && dueDate && !isNaN(dueDate.getTime())) {
     const diffTime = dueDate.getTime() - today.getTime();
     daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
@@ -65,11 +70,13 @@ export const TestEquipmentManager: React.FC<TestEquipmentManagerProps> = ({
     } else {
       calStatus = 'valid';
     }
+  } else {
+    calStatus = 'missing';
   }
 
   // AMS 2750 Rev H Table 7 Field Test Instrument MPE Limit:
-  // ±1.0°F (±0.6°C) or ±0.1% of reading, whichever is greater
-  const mpeLimit = tempUnit === '°C' ? 0.6 : 1.0;
+  // ±1.1°F (±0.6°C)
+  const mpeLimit = tempUnit === '°C' ? 0.6 : 1.1;
   const isMpeCompliant = instrument.maxPermissibleError <= mpeLimit;
 
   // Preset management with persistent localStorage
@@ -277,6 +284,12 @@ export const TestEquipmentManager: React.FC<TestEquipmentManagerProps> = ({
 
           {/* Live Calibration Health Badge */}
           <div className="flex items-center gap-2">
+            {calStatus === 'missing' && (
+              <div className="px-3.5 py-1.5 rounded-xl bg-amber-950/80 border border-amber-700/80 text-amber-300 text-xs font-bold font-mono flex items-center gap-2 shadow-sm">
+                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                <span>NO CALIBRATION DETAILS ENTERED</span>
+              </div>
+            )}
             {calStatus === 'valid' && (
               <div className="px-3.5 py-1.5 rounded-xl bg-emerald-950/80 border border-emerald-700/80 text-emerald-300 text-xs font-bold font-mono flex items-center gap-2 shadow-sm">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -317,7 +330,7 @@ export const TestEquipmentManager: React.FC<TestEquipmentManagerProps> = ({
                 Maximum Permissible Error (MPE): ±{instrument.maxPermissibleError} {tempUnit}
               </div>
               <div className="text-[11px] text-slate-300 pt-0.5 leading-relaxed font-mono">
-                AMS 2750 Rev H Table 7 Field Test Instrument Limit: ±{mpeLimit} {tempUnit} (±1.0°F / ±0.6°C).
+                AMS 2750 Rev H Table 7 Field Test Instrument Limit: ±{mpeLimit} {tempUnit} (±1.1°F / ±0.6°C).
                 Status: {isMpeCompliant ? (
                   <strong className="text-emerald-400">Compliant (Within Allowed Tolerance)</strong>
                 ) : (

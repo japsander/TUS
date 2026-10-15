@@ -278,13 +278,14 @@ export const NadcapChecklist: React.FC<NadcapChecklistProps> = ({
                 type="number"
                 min="1"
                 max="120"
-                value={meta.dataIntervalSeconds}
+                value={meta.dataIntervalSeconds || ''}
                 onChange={(e) =>
                   onUpdateMeta({
                     ...meta,
-                    dataIntervalSeconds: parseInt(e.target.value) || 60,
+                    dataIntervalSeconds: parseInt(e.target.value) || 0,
                   })
                 }
+                placeholder="Auto-detected on CSV import..."
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
               />
               <span className="absolute right-3 top-1.5 text-xs text-slate-500">

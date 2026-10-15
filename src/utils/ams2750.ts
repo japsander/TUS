@@ -322,7 +322,7 @@ export function generateStandardAMS2750Sensors(
       channelNumber,
       label: p.label,
       type: 'N',
-      rollLotNumber: `LOT-2026-N${100 + (channelNumber % 4)}`,
+      rollLotNumber: '',
       calibrationDate: today,
       expirationDate: expiry,
       recorderChannel: `CH-${String(channelNumber).padStart(2, '0')}`,
@@ -393,6 +393,14 @@ export function getLogicalWireRiggingSchedule(
   channels: ThermocoupleChannel[],
   dimUnit: DimUnit = 'mm'
 ): WireRiggingPlan {
+  if (!channels || channels.length === 0) {
+    return {
+      cables: [],
+      connections: [],
+      oppositeCornerDiagonals: [],
+    };
+  }
+
   const map = new Map<number, ThermocoupleChannel>();
   channels.forEach((c) => map.set(c.channelNumber, c));
 
@@ -448,7 +456,7 @@ export function getLogicalWireRiggingSchedule(
 
   // Closest channel helper
   const findClosest = (tx: number, ty: number, tz: number, excludeIds: Set<string> = new Set()) => {
-    let closest: ThermocoupleChannel = channels[0];
+    let closest: ThermocoupleChannel | undefined = undefined;
     let minDist = Infinity;
     for (const ch of channels) {
       if (excludeIds.has(ch.id)) continue;
@@ -458,13 +466,13 @@ export function getLogicalWireRiggingSchedule(
         closest = ch;
       }
     }
-    return closest;
+    return closest || channels[0];
   };
 
   const centerCh =
     channels.find((c) => c.label.toLowerCase().includes('center') || c.label.toLowerCase().includes('hub')) ||
     findClosest(midX, midY, midZ);
-  const centerNum = centerCh.channelNumber;
+  const centerNum = centerCh?.channelNumber ?? 0;
 
   // 4 Front corners (x ≈ minX)
   const chFBL = findClosest(minX, minY, minZ); // Front Bottom Left
@@ -478,15 +486,15 @@ export function getLogicalWireRiggingSchedule(
   const chRTL = findClosest(maxX, maxY, minZ); // Rear Top Left
   const chRTR = findClosest(maxX, maxY, maxZ); // Rear Top Right
 
-  const fBL = chFBL.channelNumber;
-  const fBR = chFBR.channelNumber;
-  const fTL = chFTL.channelNumber;
-  const fTR = chFTR.channelNumber;
+  const fBL = chFBL?.channelNumber ?? 0;
+  const fBR = chFBR?.channelNumber ?? 0;
+  const fTL = chFTL?.channelNumber ?? 0;
+  const fTR = chFTR?.channelNumber ?? 0;
 
-  const rBL = chRBL.channelNumber;
-  const rBR = chRBR.channelNumber;
-  const rTL = chRTL.channelNumber;
-  const rTR = chRTR.channelNumber;
+  const rBL = chRBL?.channelNumber ?? 0;
+  const rBR = chRBR?.channelNumber ?? 0;
+  const rTL = chRTL?.channelNumber ?? 0;
+  const rTR = chRTR?.channelNumber ?? 0;
 
   const is21Point = map.has(21) && map.has(1) && map.has(17);
 
@@ -686,6 +694,26 @@ export function evaluateSetpoint(
   const tol = CLASS_TOLERANCES[furnaceClass][tempUnit];
   const minAllowed = setpoint.targetTemp - tol;
   const maxAllowed = setpoint.targetTemp + tol;
+
+  if (!channels || channels.length === 0) {
+    return {
+      setpointId: setpoint.id,
+      targetTemp: setpoint.targetTemp,
+      tolerance: tol,
+      minAllowed,
+      maxAllowed,
+      minCorrectedTemp: setpoint.targetTemp,
+      maxCorrectedTemp: setpoint.targetTemp,
+      meanCorrectedTemp: setpoint.targetTemp,
+      uniformitySpread: 0,
+      maxOvershoot: setpoint.maxOvershootObserved,
+      passed: false,
+      minSensorLabel: 'N/A',
+      maxSensorLabel: 'N/A',
+      sensorFailureNote: 'No thermocouple channels configured.',
+      channelResults: [],
+    };
+  }
 
   const failedChannels = channels.filter((ch) => ch.failed);
   const validChannels = channels.filter((ch) => !ch.failed);

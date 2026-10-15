@@ -61,12 +61,17 @@ export const QWZInfoPanel: React.FC<QWZInfoPanelProps> = ({
 
   // Calibration status
   const today = new Date();
+  const hasCalDetails = Boolean(
+    instrument?.calibrationDate?.trim() &&
+    instrument?.calibrationDueDate?.trim() &&
+    instrument?.traceabilityNumber?.trim()
+  );
   const dueDate = instrument?.calibrationDueDate ? new Date(instrument.calibrationDueDate) : null;
   let calDaysRemaining: number | null = null;
-  let isCalValid = true;
-  if (dueDate && !isNaN(dueDate.getTime())) {
+  let isCalValid = false;
+  if (hasCalDetails && dueDate && !isNaN(dueDate.getTime())) {
     calDaysRemaining = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    if (calDaysRemaining < 0) isCalValid = false;
+    if (calDaysRemaining >= 0) isCalValid = true;
   }
 
   const chamberVolM3 =
@@ -357,15 +362,19 @@ export const QWZInfoPanel: React.FC<QWZInfoPanelProps> = ({
             <div>
               <div className="text-slate-200 font-semibold flex items-center gap-2 flex-wrap">
                 <span>Test Instrument: <strong className="text-white">{instrument.manufacturer} {instrument.model}</strong></span>
-                <span
-                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                    isCalValid
-                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                      : 'bg-red-950 text-red-300 border border-red-800'
-                  }`}
-                >
-                  {isCalValid ? `UKAS CAL VALID (${calDaysRemaining}d)` : 'CAL EXPIRED'}
-                </span>
+                {!hasCalDetails ? (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-950/80 text-amber-300 border border-amber-800">
+                    NO CALIBRATION DETAILS ENTERED
+                  </span>
+                ) : isCalValid ? (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                    UKAS CAL VALID ({calDaysRemaining}d)
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-red-950 text-red-300 border border-red-800">
+                    CAL EXPIRED
+                  </span>
+                )}
               </div>
               <div className="text-[11px] text-slate-400 font-mono">
                 S/N: {instrument.serialNumber} • Traceability: {instrument.traceabilityNumber} • MPE: ±{instrument.maxPermissibleError}{tempUnit}

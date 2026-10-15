@@ -64,10 +64,10 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
     const newSp: SurveySetpoint = {
       id: `sp-${Date.now()}`,
       targetTemp: baseTemp,
-      soakDurationMinutes: 30,
-      soakStartTime: '10:00',
-      soakEndTime: '10:30',
-      maxOvershootObserved: baseTemp + Math.round((tolerance * 0.3) * 10) / 10,
+      soakDurationMinutes: 0,
+      soakStartTime: '',
+      soakEndTime: '',
+      maxOvershootObserved: 0,
       readings: {},
     };
 
