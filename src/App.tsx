@@ -82,6 +82,8 @@ export default function App() {
     shape: 'rectangular',
     feedthroughWall: 'rear',
     feedthroughPos: { x: 1200, y: 750, z: 500 },
+    controlSensorPos: { x: 600, y: 1000, z: 500, label: 'Roof Center (Control TC)' },
+    overtempSensorPos: { x: 600, y: 1000, z: 200, label: 'Ceiling Limit (Overtemp TC)' },
   });
 
   // Qualified Work Zone in mm (UK Standard)
@@ -154,8 +156,6 @@ export default function App() {
     qualityManagerName: '',
     qualityManagerTitle: '',
     responsibleEngineerName: '',
-    lastSatDate: '',
-    lastSatResult: '',
   });
 
   // Survey Setpoints in Celsius (°C)
@@ -1177,26 +1177,7 @@ export default function App() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-slate-400 mb-1">Last System Accuracy Test (SAT) Date</label>
-                    <input
-                      type="date"
-                      value={meta.lastSatDate}
-                      onChange={(e) => setMeta({ ...meta, lastSatDate: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
 
-                  <div>
-                    <label className="block text-slate-400 mb-1">Last SAT Finding / Result</label>
-                    <input
-                      type="text"
-                      value={meta.lastSatResult}
-                      onChange={(e) => setMeta({ ...meta, lastSatResult: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none"
-                      placeholder="e.g. Pass (Max Error 0.3°C)"
-                    />
-                  </div>
 
                   <div className="col-span-2 bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3 mt-2">
                     <div className="flex items-center justify-between">

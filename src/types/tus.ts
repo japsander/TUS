@@ -5,6 +5,13 @@ export type DimUnit = 'in' | 'mm';
 export type FurnaceClass = 1 | 2 | 3 | 4 | 5 | 6;
 export type InstrumentationType = 'A' | 'B' | 'C' | 'D';
 
+export interface PermanentSensorPosition {
+  x: number;
+  y: number;
+  z: number;
+  label: string;
+}
+
 export interface FurnaceChamber {
   length: number; // Front-to-Back (Depth)
   width: number;  // Left-to-Right
@@ -12,6 +19,8 @@ export interface FurnaceChamber {
   shape: 'rectangular' | 'cylindrical';
   feedthroughWall: 'rear' | 'roof' | 'left' | 'right' | 'under_door';
   feedthroughPos: { x: number; y: number; z: number };
+  controlSensorPos?: PermanentSensorPosition;
+  overtempSensorPos?: PermanentSensorPosition;
 }
 
 export interface QualifiedWorkZone {
@@ -144,8 +153,6 @@ export interface SurveyMetadata {
   qualityManagerName: string;
   qualityManagerTitle: string;
   responsibleEngineerName: string;
-  lastSatDate?: string;
-  lastSatResult?: string;
 }
 
 export interface TusTrendData {

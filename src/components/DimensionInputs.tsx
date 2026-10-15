@@ -907,6 +907,197 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
         </div>
       </div>
 
+      {/* 4. Permanent Furnace Sensors (Control & Overtemperature) */}
+      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <Compass className="w-4 h-4 text-cyan-400" />
+            <h3 className="font-semibold text-slate-100 text-sm">
+              4. Permanent Furnace Sensors (Control & Overtemperature Thermocouples)
+            </h3>
+          </div>
+          <span className="text-xs text-slate-400">
+            AMS 2750 Instrumentation Types A–E Spatial Positions
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Control Sensor */}
+          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 inline-block"></span> Control Thermocouple (TC-CTRL)
+              </span>
+            </div>
+            <div>
+              <label className="block text-[11px] text-slate-400 mb-1">Sensor Identifier / Label</label>
+              <input
+                type="text"
+                value={chamber.controlSensorPos?.label ?? 'Roof Center (Control TC)'}
+                onChange={(e) =>
+                  onUpdateChamber({
+                    ...chamber,
+                    controlSensorPos: {
+                      x: chamber.controlSensorPos?.x ?? Math.round(chamber.length / 2),
+                      y: chamber.controlSensorPos?.y ?? chamber.height,
+                      z: chamber.controlSensorPos?.z ?? Math.round(chamber.width / 2),
+                      label: e.target.value,
+                    },
+                  })
+                }
+                className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-1">Depth (X)</label>
+                <input
+                  type="number"
+                  value={chamber.controlSensorPos?.x ?? Math.round(chamber.length / 2)}
+                  onChange={(e) =>
+                    onUpdateChamber({
+                      ...chamber,
+                      controlSensorPos: {
+                        x: parseFloat(e.target.value) || 0,
+                        y: chamber.controlSensorPos?.y ?? chamber.height,
+                        z: chamber.controlSensorPos?.z ?? Math.round(chamber.width / 2),
+                        label: chamber.controlSensorPos?.label ?? 'Control TC',
+                      },
+                    })
+                  }
+                  className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-100 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-1">Height (Y)</label>
+                <input
+                  type="number"
+                  value={chamber.controlSensorPos?.y ?? chamber.height}
+                  onChange={(e) =>
+                    onUpdateChamber({
+                      ...chamber,
+                      controlSensorPos: {
+                        x: chamber.controlSensorPos?.x ?? Math.round(chamber.length / 2),
+                        y: parseFloat(e.target.value) || 0,
+                        z: chamber.controlSensorPos?.z ?? Math.round(chamber.width / 2),
+                        label: chamber.controlSensorPos?.label ?? 'Control TC',
+                      },
+                    })
+                  }
+                  className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-100 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-1">Width (Z)</label>
+                <input
+                  type="number"
+                  value={chamber.controlSensorPos?.z ?? Math.round(chamber.width / 2)}
+                  onChange={(e) =>
+                    onUpdateChamber({
+                      ...chamber,
+                      controlSensorPos: {
+                        x: chamber.controlSensorPos?.x ?? Math.round(chamber.length / 2),
+                        y: chamber.controlSensorPos?.y ?? chamber.height,
+                        z: parseFloat(e.target.value) || 0,
+                        label: chamber.controlSensorPos?.label ?? 'Control TC',
+                      },
+                    })
+                  }
+                  className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-100 font-mono"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Overtemperature Sensor */}
+          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-red-300 flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block"></span> Overtemperature Limit (TC-OVT)
+              </span>
+            </div>
+            <div>
+              <label className="block text-[11px] text-slate-400 mb-1">Sensor Identifier / Label</label>
+              <input
+                type="text"
+                value={chamber.overtempSensorPos?.label ?? 'Ceiling Limit (Overtemp TC)'}
+                onChange={(e) =>
+                  onUpdateChamber({
+                    ...chamber,
+                    overtempSensorPos: {
+                      x: chamber.overtempSensorPos?.x ?? Math.round(chamber.length / 2),
+                      y: chamber.overtempSensorPos?.y ?? chamber.height,
+                      z: chamber.overtempSensorPos?.z ?? Math.round(chamber.width / 4),
+                      label: e.target.value,
+                    },
+                  })
+                }
+                className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-100 focus:border-red-500 focus:outline-none"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-1">Depth (X)</label>
+                <input
+                  type="number"
+                  value={chamber.overtempSensorPos?.x ?? Math.round(chamber.length / 2)}
+                  onChange={(e) =>
+                    onUpdateChamber({
+                      ...chamber,
+                      overtempSensorPos: {
+                        x: parseFloat(e.target.value) || 0,
+                        y: chamber.overtempSensorPos?.y ?? chamber.height,
+                        z: chamber.overtempSensorPos?.z ?? Math.round(chamber.width / 4),
+                        label: chamber.overtempSensorPos?.label ?? 'Overtemp TC',
+                      },
+                    })
+                  }
+                  className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-100 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-1">Height (Y)</label>
+                <input
+                  type="number"
+                  value={chamber.overtempSensorPos?.y ?? chamber.height}
+                  onChange={(e) =>
+                    onUpdateChamber({
+                      ...chamber,
+                      overtempSensorPos: {
+                        x: chamber.overtempSensorPos?.x ?? Math.round(chamber.length / 2),
+                        y: parseFloat(e.target.value) || 0,
+                        z: chamber.overtempSensorPos?.z ?? Math.round(chamber.width / 4),
+                        label: chamber.overtempSensorPos?.label ?? 'Overtemp TC',
+                      },
+                    })
+                  }
+                  className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-100 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-1">Width (Z)</label>
+                <input
+                  type="number"
+                  value={chamber.overtempSensorPos?.z ?? Math.round(chamber.width / 4)}
+                  onChange={(e) =>
+                    onUpdateChamber({
+                      ...chamber,
+                      overtempSensorPos: {
+                        x: chamber.overtempSensorPos?.x ?? Math.round(chamber.length / 2),
+                        y: chamber.overtempSensorPos?.y ?? chamber.height,
+                        z: parseFloat(e.target.value) || 0,
+                        label: chamber.overtempSensorPos?.label ?? 'Overtemp TC',
+                      },
+                    })
+                  }
+                  className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-100 font-mono"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* 4. Live Geometrical Validation & Enclosure Status */}
       <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 lg:p-5 space-y-3">
         <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">

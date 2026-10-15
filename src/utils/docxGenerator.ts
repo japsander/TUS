@@ -143,7 +143,7 @@ export async function generateTusDocxBlob(params: {
   const docHeader = new Header({
     children: [
       new Paragraph({
-        alignment: AlignmentType.RIGHT,
+        alignment: AlignmentType.CENTER,
         children: [
           new TextRun({
             text: `NADCAP AC7102/8 & AMS 2750 REV H TUS REPORT  |  FURNACE ID: ${meta.furnaceId}  |  DOC: ${meta.reportNumber}`,
@@ -504,8 +504,8 @@ export async function generateTusDocxBlob(params: {
             new ImageRun({
               data: imgBytes,
               transformation: {
-                width: 580,
-                height: 380,
+                width: 700,
+                height: 460,
               },
               type: 'png',
             }),
@@ -762,6 +762,7 @@ export async function generateTusDocxBlob(params: {
     const sp = setpoints[spIdx];
     children.push(
       new Paragraph({
+        pageBreakBefore: true,
         spacing: { before: 100, after: 60 },
         children: [
           new TextRun({

@@ -54,6 +54,7 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
   const [showDimensions, setShowDimensions] = useState(true);
   const [showWireGrid, setShowWireGrid] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
+  const [showPermanentSensors, setShowPermanentSensors] = useState(true);
   const [captureFeedback, setCaptureFeedback] = useState<string | null>(null);
 
   const [isDragging, setIsDragging] = useState(false);
@@ -199,6 +200,18 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
       };
     });
   }, [channels, project3Dto2D]);
+
+  const controlProj = useMemo(() => {
+    if (!chamber.controlSensorPos) return null;
+    const p = project3Dto2D(chamber.controlSensorPos.x, chamber.controlSensorPos.y, chamber.controlSensorPos.z);
+    return { ...chamber.controlSensorPos, ...p };
+  }, [chamber.controlSensorPos, project3Dto2D]);
+
+  const overtempProj = useMemo(() => {
+    if (!chamber.overtempSensorPos) return null;
+    const p = project3Dto2D(chamber.overtempSensorPos.x, chamber.overtempSensorPos.y, chamber.overtempSensorPos.z);
+    return { ...chamber.overtempSensorPos, ...p };
+  }, [chamber.overtempSensorPos, project3Dto2D]);
 
   // 4. Physical Wire Grid Connections (Logical Opposite-Corner Diagonals & Perimeter)
   const wireRiggingPlan = useMemo(() => {
@@ -424,6 +437,21 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
 
           <div className="w-[1px] h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
 
+          <button
+            onClick={() => setShowPermanentSensors(!showPermanentSensors)}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition-colors flex items-center gap-1.5 ${
+              showPermanentSensors
+                ? 'bg-cyan-950/80 border-cyan-700 text-cyan-300'
+                : 'bg-slate-800 border-slate-700 text-slate-400'
+            }`}
+            title="Toggle display of permanent Control & Overtemp sensors"
+          >
+            <Compass className="w-3.5 h-3.5" />
+            <span>Permanent TCs</span>
+          </button>
+
+          <div className="w-[1px] h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
+
           {/* Theme Toggle (Drafting White vs Dark Blueprint) */}
           <button
             onClick={() => setIsWhiteTheme(!isWhiteTheme)}
@@ -629,6 +657,33 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
               ▲ FRONT OF FURNACE (DOOR)
             </text>
           </g>
+
+          {/* Permanent Furnace Sensors (Control & Overtemp) */}
+          {showPermanentSensors && (
+            <g>
+              {controlProj && (
+                <g>
+                  <circle cx={controlProj.x} cy={controlProj.y} r="7" fill="#06B6D4" stroke="#FFFFFF" strokeWidth="2" filter="url(#badge-shadow)" />
+                  <circle cx={controlProj.x} cy={controlProj.y} r="13" fill="none" stroke="#06B6D4" strokeWidth="1.5" strokeDasharray="3,2" opacity="0.9" />
+                  <rect x={controlProj.x - 60} y={controlProj.y - 30} width="120" height="20" rx="4" fill="#082F49" stroke="#06B6D4" strokeWidth="1.2" />
+                  <text x={controlProj.x} y={controlProj.y - 16} textAnchor="middle" fill="#22D3EE" fontSize="9" fontWeight="bold">
+                    {controlProj.label || 'Control TC'}
+                  </text>
+                </g>
+              )}
+
+              {overtempProj && (
+                <g>
+                  <circle cx={overtempProj.x} cy={overtempProj.y} r="7" fill="#EF4444" stroke="#FFFFFF" strokeWidth="2" filter="url(#badge-shadow)" />
+                  <circle cx={overtempProj.x} cy={overtempProj.y} r="13" fill="none" stroke="#EF4444" strokeWidth="1.5" strokeDasharray="3,2" opacity="0.9" />
+                  <rect x={overtempProj.x - 65} y={overtempProj.y + 8} width="130" height="20" rx="4" fill="#450A0A" stroke="#EF4444" strokeWidth="1.2" />
+                  <text x={overtempProj.x} y={overtempProj.y + 22} textAnchor="middle" fill="#F87171" fontSize="9" fontWeight="bold">
+                    {overtempProj.label || 'Overtemp TC'}
+                  </text>
+                </g>
+              )}
+            </g>
+          )}
 
           {/* ----------------------------------------------------------- */}
           {/* 3. PHYSICAL WIRE GRID / WEB STRUCTURE (Opposite-Corner 3D Web & Perimeter Frame) */}

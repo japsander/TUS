@@ -86,6 +86,7 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
             quality: 1.0,
             pixelRatio: 2,
             backgroundColor: '#0f172a',
+            skipFonts: true,
           });
         } catch (captureErr) {
           console.error('Failed to capture trend graph:', captureErr);
