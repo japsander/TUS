@@ -320,10 +320,9 @@ function calculateDwellStats(
   const endRow = rows[bestEnd];
   const durationMin = Math.round((endRow.timestampSec - startRow.timestampSec) / 60);
 
-  // Search for maximum overshoot (ramp leading into dwell)
+  // Search for maximum overshoot (strictly within the stabilized dwell period)
   let maxOvershoot = target;
-  const overshootSearchStart = Math.max(0, bestStart - 20); // check last 20 rows before dwell
-  for (let i = overshootSearchStart; i <= bestEnd; i++) {
+  for (let i = bestStart; i <= bestEnd; i++) {
     for (const map of activeMappings) {
       const val = rows[i].values[map.csvHeader];
       if (val !== undefined && val > maxOvershoot) {

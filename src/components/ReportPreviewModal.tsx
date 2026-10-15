@@ -179,6 +179,18 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
                 <span className="text-slate-500 block">Survey Date:</span>
                 <span className="font-bold text-slate-800">{meta.date}</span>
               </div>
+              <div>
+                <span className="text-slate-500 block">As Found Error:</span>
+                <span className="font-bold text-slate-800">
+                  {instrument.asFoundError !== undefined ? `${instrument.asFoundError} ${meta.tempUnit}` : 'N/A'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500 block">As Left Error:</span>
+                <span className="font-bold text-slate-800">
+                  {instrument.asLeftError !== undefined ? `${instrument.asLeftError} ${meta.tempUnit}` : 'N/A'}
+                </span>
+              </div>
             </div>
 
             {/* Diagram Preview */}

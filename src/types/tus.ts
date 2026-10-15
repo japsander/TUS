@@ -98,6 +98,8 @@ export interface TestInstrument {
   calibrationStandard?: string;
   calibrationCertDocRef?: string;
   calibratedByTechnician?: string;
+  asFoundError?: number;
+  asLeftError?: number;
   secondaryStandards?: SecondaryStandard[];
 }
 

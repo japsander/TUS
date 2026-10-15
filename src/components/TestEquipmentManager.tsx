@@ -214,6 +214,8 @@ export const TestEquipmentManager: React.FC<TestEquipmentManagerProps> = ({
         calibrationLab: instrument.calibrationLab,
         maxPermissibleError: instrument.maxPermissibleError,
         calibratedByTechnician: instrument.calibratedByTechnician,
+        asFoundError: instrument.asFoundError,
+        asLeftError: instrument.asLeftError,
       },
     };
     savePresetsToStorage([...presets, newPreset]);
@@ -266,6 +268,8 @@ export const TestEquipmentManager: React.FC<TestEquipmentManagerProps> = ({
       calibrationDate: instrument.calibrationDate || todayStr,
       calibrationDueDate: instrument.calibrationDueDate || sixMonthsLater,
       maxPermissibleError: preset.instrument.maxPermissibleError ?? instrument.maxPermissibleError,
+      asFoundError: preset.instrument.asFoundError ?? instrument.asFoundError,
+      asLeftError: preset.instrument.asLeftError ?? instrument.asLeftError,
     });
   };
 
@@ -843,6 +847,54 @@ export const TestEquipmentManager: React.FC<TestEquipmentManagerProps> = ({
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
               placeholder="e.g. D. Edwards, Senior Metrologist"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              Max "As Found" Error
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                step="0.01"
+                value={instrument.asFoundError ?? ''}
+                onChange={(e) =>
+                  onUpdateInstrument({
+                    ...instrument,
+                    asFoundError: e.target.value ? parseFloat(e.target.value) : undefined,
+                  })
+                }
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
+                placeholder="0.00"
+              />
+              <span className="absolute right-3 top-2 text-xs text-slate-500 font-mono">
+                {tempUnit}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              Max "As Left" Error
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                step="0.01"
+                value={instrument.asLeftError ?? ''}
+                onChange={(e) =>
+                  onUpdateInstrument({
+                    ...instrument,
+                    asLeftError: e.target.value ? parseFloat(e.target.value) : undefined,
+                  })
+                }
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
+                placeholder="0.00"
+              />
+              <span className="absolute right-3 top-2 text-xs text-slate-500 font-mono">
+                {tempUnit}
+              </span>
+            </div>
           </div>
         </div>
       </div>

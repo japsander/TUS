@@ -626,6 +626,18 @@ export async function generateTusDocxBlob(params: {
         }),
         new TableRow({
           children: [
+            createCell('Calibration Result: "As Found"', { bold: true, bg: 'F8FAFC' }),
+            createCell(instrument.asFoundError !== undefined ? `Max Error: ${instrument.asFoundError} ${meta.tempUnit}` : 'N/A'),
+          ],
+        }),
+        new TableRow({
+          children: [
+            createCell('Calibration Result: "As Left"', { bold: true, bg: 'F8FAFC' }),
+            createCell(instrument.asLeftError !== undefined ? `Max Error: ${instrument.asLeftError} ${meta.tempUnit}` : 'N/A'),
+          ],
+        }),
+        new TableRow({
+          children: [
             createCell('Data Acquisition Logging Frequency', { bold: true, bg: 'F8FAFC' }),
             createCell(`${meta.dataIntervalSeconds} seconds (AMS 2750 Rev H requires ≤ 120s)`),
           ],
