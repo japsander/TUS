@@ -22,7 +22,16 @@ import {
   Clock,
   RotateCcw,
   Compass,
+  Trash2,
+  Plus,
 } from 'lucide-react';
+
+export interface ChamberPreset {
+  id: string;
+  name: string;
+  chamber: FurnaceChamber;
+  qwz: QualifiedWorkZone;
+}
 
 interface DimensionInputsProps {
   chamber: FurnaceChamber;
@@ -31,9 +40,13 @@ interface DimensionInputsProps {
   channelCount: number;
   tempUnit?: '°C' | '°F';
   instrument?: TestInstrument;
+  chamberPresets: ChamberPreset[];
   onUpdateChamber: (c: FurnaceChamber) => void;
   onUpdateQWZ: (q: QualifiedWorkZone) => void;
-  onApplyPreset: (name: string) => void;
+  onApplyPreset: (id: string) => void;
+  onSaveCurrentAsPreset: (name: string) => void;
+  onDeletePreset: (id: string) => void;
+  onRenamePreset: (id: string, newName: string) => void;
   onFitSensorsToQWZ: (count?: number) => void;
   onUpdateInstrument?: (inst: TestInstrument) => void;
   onNavigateTab?: (tab: string) => void;
@@ -46,14 +59,19 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
   channelCount,
   tempUnit = '°C',
   instrument,
+  chamberPresets,
   onUpdateChamber,
   onUpdateQWZ,
   onApplyPreset,
+  onSaveCurrentAsPreset,
+  onDeletePreset,
+  onRenamePreset,
   onFitSensorsToQWZ,
   onUpdateInstrument,
   onNavigateTab,
 }) => {
   const [autoCenter, setAutoCenter] = useState<boolean>(false);
+  const [newPresetInputName, setNewPresetInputName] = useState('');
 
   // Local string inputs for smooth, uninterrupted backspacing and typing
   const [chamberInputs, setChamberInputs] = useState({
@@ -392,22 +410,57 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
           <span className="text-xs text-slate-500">Auto-configures dimensions, clearances & sensors</span>
         </div>
         <div className="flex flex-wrap gap-2">
-          {[
-            { label: 'Work Zone 15m³ (2500×3000×2000 mm)', id: 'custom-2500' },
-            { label: 'AMS 2750 Picture 1 Standard (1200×1000×1000 mm)', id: 'pic1-1200' },
-            { label: 'Drop-Bottom Solution Pit (1800×1200×1500 mm)', id: 'drop-1800' },
-            { label: 'Vacuum Hot Zone (900×900×1200 mm)', id: 'vac-900' },
-            { label: 'Large Aerospace Car-Bottom (3000×1800×1800 mm)', id: 'car-3000' },
-            { label: 'Compact Laboratory Retort (600×500×500 mm)', id: 'lab-600' },
-          ].map((preset) => (
-            <button
+          {chamberPresets.map((preset) => (
+            <div
               key={preset.id}
-              onClick={() => onApplyPreset(preset.id)}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-cyan-500/60 text-xs text-slate-200 transition-all font-medium cursor-pointer"
+              className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700/80 border border-slate-700 hover:border-cyan-500/60 rounded-lg px-2.5 py-1 text-xs text-slate-200 transition-all font-medium"
             >
-              {preset.label}
-            </button>
+              <button
+                onClick={() => onApplyPreset(preset.id)}
+                className="hover:text-cyan-300 text-left truncate cursor-pointer"
+                title="Apply preset"
+              >
+                {preset.name}
+              </button>
+              <button
+                onClick={() => {
+                  const newName = prompt('Enter new name for preset:', preset.name);
+                  if (newName) onRenamePreset(preset.id, newName);
+                }}
+                className="text-slate-400 hover:text-slate-200 ml-1 px-1 text-[10px] cursor-pointer"
+                title="Rename preset"
+              >
+                ✏️
+              </button>
+              <button
+                onClick={() => onDeletePreset(preset.id)}
+                className="text-red-400 hover:text-red-300 ml-0.5 p-0.5 cursor-pointer"
+                title="Delete preset"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
           ))}
+        </div>
+
+        {/* Save Current as Preset Form */}
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-800">
+          <input
+            type="text"
+            placeholder="New preset name (e.g. Custom Chamber A)..."
+            value={newPresetInputName}
+            onChange={(e) => setNewPresetInputName(e.target.value)}
+            className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 flex-1"
+          />
+          <button
+            onClick={() => {
+              onSaveCurrentAsPreset(newPresetInputName);
+              setNewPresetInputName('');
+            }}
+            className="flex items-center gap-1.5 px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" /> Save Current as Preset
+          </button>
         </div>
       </div>
 

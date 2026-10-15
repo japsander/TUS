@@ -32,7 +32,7 @@ import {
   computeSensorDistances,
 } from './utils/ams2750';
 import { TechnicalSchematic2D } from './components/TechnicalSchematic2D';
-import { DimensionInputs } from './components/DimensionInputs';
+import { DimensionInputs, ChamberPreset } from './components/DimensionInputs';
 import { ChannelManager } from './components/ChannelManager';
 import { SurveyDataSection } from './components/SurveyDataSection';
 import { NadcapChecklist } from './components/NadcapChecklist';
@@ -43,6 +43,7 @@ import { ReportPreviewModal } from './components/ReportPreviewModal';
 import {
   FileText,
   Download,
+  Upload,
   Box,
   Layers,
   Thermometer,
@@ -336,6 +337,50 @@ export default function App() {
     }
   };
 
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleExportAllPresets = () => {
+    const exportData = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      furnacePresets,
+      chamberPresets,
+    };
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportData, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', dataStr);
+    downloadAnchor.setAttribute('download', `pyrometry_presets_${new Date().toISOString().slice(0, 10)}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  const handleImportAllPresets = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileReader = new FileReader();
+    if (e.target.files && e.target.files[0]) {
+      fileReader.readAsText(e.target.files[0], 'UTF-8');
+      fileReader.onload = (event) => {
+        try {
+          const parsed = JSON.parse(event.target?.result as string);
+          if (parsed.furnacePresets && Array.isArray(parsed.furnacePresets)) {
+            setFurnacePresets(parsed.furnacePresets);
+            localStorage.setItem('tus_furnace_presets_v1', JSON.stringify(parsed.furnacePresets));
+            if (parsed.furnacePresets.length > 0 && !selectedFurnacePresetId) {
+              setSelectedFurnacePresetId(parsed.furnacePresets[0].id);
+            }
+          }
+          if (parsed.chamberPresets && Array.isArray(parsed.chamberPresets)) {
+            setChamberPresets(parsed.chamberPresets);
+            localStorage.setItem('tus_chamber_presets_v1', JSON.stringify(parsed.chamberPresets));
+          }
+          alert('Presets imported successfully!');
+        } catch (err) {
+          alert('Error parsing preset JSON file.');
+        }
+      };
+    }
+  };
+
   // Test Instrument Details (UK ISO/IEC 17025 Accredited)
   const [instrument, setInstrument] = useState<TestInstrument>({
     manufacturer: 'Yokogawa Metrology UK',
@@ -447,31 +492,65 @@ export default function App() {
     }));
   };
 
-  // Apply UK Standard Architecture Presets
-  const handleApplyPreset = (id: string) => {
-    let newChamber: FurnaceChamber = { ...chamber };
-    let newQWZ: QualifiedWorkZone = { ...qwz };
+  // Chamber Architecture Presets State
+  const DEFAULT_CHAMBER_PRESETS: ChamberPreset[] = [
+    { id: 'custom-2500', name: 'Work Zone 15m³ (2500×3000×2000 mm)', chamber: { length: 2900, width: 3400, height: 2400, shape: 'rectangular', feedthroughWall: 'rear', feedthroughPos: { x: 2900, y: 1800, z: 1700 } }, qwz: { length: 2500, width: 3000, height: 2000, offsetLeft: 200, offsetRight: 200, offsetFront: 200, offsetRear: 200, offsetFloor: 180, offsetCeiling: 220 } },
+    { id: 'pic1-1200', name: 'AMS 2750 Picture 1 Standard (1200×1000×1000 mm)', chamber: { length: 1200, width: 1000, height: 1000, shape: 'rectangular', feedthroughWall: 'rear', feedthroughPos: { x: 1200, y: 750, z: 500 } }, qwz: { length: 900, width: 700, height: 700, offsetLeft: 150, offsetRight: 150, offsetFront: 150, offsetRear: 150, offsetFloor: 120, offsetCeiling: 180 } },
+    { id: 'drop-1800', name: 'Drop-Bottom Solution Pit (1800×1200×1500 mm)', chamber: { length: 1800, width: 1200, height: 1500, shape: 'rectangular', feedthroughWall: 'roof', feedthroughPos: { x: 900, y: 1500, z: 600 } }, qwz: { length: 1400, width: 900, height: 1100, offsetLeft: 150, offsetRight: 150, offsetFront: 200, offsetRear: 200, offsetFloor: 180, offsetCeiling: 220 } },
+    { id: 'vac-900', name: 'Vacuum Hot Zone (900×900×1200 mm)', chamber: { length: 900, width: 900, height: 1200, shape: 'rectangular', feedthroughWall: 'rear', feedthroughPos: { x: 900, y: 900, z: 450 } }, qwz: { length: 600, width: 600, height: 900, offsetLeft: 150, offsetRight: 150, offsetFront: 150, offsetRear: 150, offsetFloor: 150, offsetCeiling: 150 } },
+    { id: 'car-3000', name: 'Large Aerospace Car-Bottom (3000×1800×1800 mm)', chamber: { length: 3000, width: 1800, height: 1800, shape: 'rectangular', feedthroughWall: 'left', feedthroughPos: { x: 1500, y: 1200, z: 0 } }, qwz: { length: 2400, width: 1400, height: 1300, offsetLeft: 200, offsetRight: 200, offsetFront: 300, offsetRear: 300, offsetFloor: 250, offsetCeiling: 250 } },
+    { id: 'lab-600', name: 'Compact Laboratory Retort (600×500×500 mm)', chamber: { length: 600, width: 500, height: 500, shape: 'rectangular', feedthroughWall: 'rear', feedthroughPos: { x: 600, y: 350, z: 250 } }, qwz: { length: 450, width: 350, height: 350, offsetLeft: 75, offsetRight: 75, offsetFront: 75, offsetRear: 75, offsetFloor: 60, offsetCeiling: 90 } },
+  ];
 
-    if (id === 'custom-2500') {
-      newChamber = {
-        length: 2900,
-        width: 3400,
-        height: 2400,
-        shape: 'rectangular',
-        feedthroughWall: 'rear',
-        feedthroughPos: { x: 2900, y: 1800, z: 1700 },
-      };
-      newQWZ = {
-        length: 2500,
-        width: 3000,
-        height: 2000,
-        offsetLeft: 200,
-        offsetRight: 200,
-        offsetFront: 200,
-        offsetRear: 200,
-        offsetFloor: 180,
-        offsetCeiling: 220,
-      };
+  const [chamberPresets, setChamberPresets] = useState<ChamberPreset[]>(() => {
+    try {
+      const saved = localStorage.getItem('tus_chamber_presets_v1');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return DEFAULT_CHAMBER_PRESETS;
+  });
+
+  const saveChamberPresets = (updated: ChamberPreset[]) => {
+    setChamberPresets(updated);
+    try {
+      localStorage.setItem('tus_chamber_presets_v1', JSON.stringify(updated));
+    } catch (e) {}
+  };
+
+  const handleSaveCurrentChamberAsPreset = (name: string) => {
+    const presetName = name.trim() || `Zone ${qwz.length}×${qwz.width}×${qwz.height} ${dimUnit}`;
+    const newPreset: ChamberPreset = {
+      id: `chamber-${Date.now()}`,
+      name: presetName,
+      chamber,
+      qwz,
+    };
+    saveChamberPresets([...chamberPresets, newPreset]);
+  };
+
+  const handleDeleteChamberPreset = (id: string) => {
+    const updated = chamberPresets.filter(p => p.id !== id);
+    saveChamberPresets(updated);
+  };
+
+  const handleRenameChamberPreset = (id: string, newName: string) => {
+    if (!newName.trim()) return;
+    const updated = chamberPresets.map(p => p.id === id ? { ...p, name: newName.trim() } : p);
+    saveChamberPresets(updated);
+  };
+
+  // Apply Chamber Architecture Presets
+  const handleApplyPreset = (id: string) => {
+    const found = chamberPresets.find(p => p.id === id);
+    let newChamber: FurnaceChamber;
+    let newQWZ: QualifiedWorkZone;
+
+    if (found) {
+      newChamber = found.chamber;
+      newQWZ = found.qwz;
+    } else if (id === 'custom-2500') {
+      newChamber = { length: 2900, width: 3400, height: 2400, shape: 'rectangular', feedthroughWall: 'rear', feedthroughPos: { x: 2900, y: 1800, z: 1700 } };
+      newQWZ = { length: 2500, width: 3000, height: 2000, offsetLeft: 200, offsetRight: 200, offsetFront: 200, offsetRear: 200, offsetFloor: 180, offsetCeiling: 220 };
     } else if (id === 'pic1-1200') {
       newChamber = { length: 1200, width: 1000, height: 1000, shape: 'rectangular', feedthroughWall: 'rear', feedthroughPos: { x: 1200, y: 750, z: 500 } };
       newQWZ = { length: 900, width: 700, height: 700, offsetLeft: 150, offsetRight: 150, offsetFront: 150, offsetRear: 150, offsetFloor: 120, offsetCeiling: 180 };
@@ -487,6 +566,9 @@ export default function App() {
     } else if (id === 'lab-600') {
       newChamber = { length: 600, width: 500, height: 500, shape: 'rectangular', feedthroughWall: 'rear', feedthroughPos: { x: 600, y: 350, z: 250 } };
       newQWZ = { length: 450, width: 350, height: 350, offsetLeft: 75, offsetRight: 75, offsetFront: 75, offsetRear: 75, offsetFloor: 60, offsetCeiling: 90 };
+    } else {
+      newChamber = chamber;
+      newQWZ = qwz;
     }
 
     setChamber(newChamber);
@@ -495,7 +577,7 @@ export default function App() {
     const volumeM3 = calculateVolumeInM3(newQWZ, dimUnit);
     const volumeCuFt = calculateVolumeInCuFt(newQWZ, dimUnit);
     const { minSensors } = getMinRequiredSensors(volumeCuFt, volumeM3);
-    const countToGenerate = id === 'pic1-1200' || id === 'custom-2500' ? 21 : Math.max(9, minSensors);
+    const countToGenerate = id === 'pic1-1200' || id === 'custom-2500' || found ? 21 : Math.max(9, minSensors);
     const newSensors = generateStandardAMS2750Sensors(newChamber, newQWZ, countToGenerate);
     setChannels(newSensors);
     if (newSensors[0]) setSelectedChannelId(newSensors[0].id);
@@ -878,9 +960,13 @@ export default function App() {
                 channelCount={channels.length}
                 tempUnit={tempUnit}
                 instrument={instrument}
+                chamberPresets={chamberPresets}
                 onUpdateChamber={handleUpdateChamber}
                 onUpdateQWZ={handleUpdateQWZ}
                 onApplyPreset={handleApplyPreset}
+                onSaveCurrentAsPreset={handleSaveCurrentChamberAsPreset}
+                onDeletePreset={handleDeleteChamberPreset}
+                onRenamePreset={handleRenameChamberPreset}
                 onFitSensorsToQWZ={handleFitSensorsToQWZ}
                 onUpdateInstrument={setInstrument}
                 onNavigateTab={(tab) => setActiveTab(tab as any)}
@@ -994,6 +1080,31 @@ export default function App() {
                       <Plus className="w-3.5 h-3.5" /> Save Preset
                     </button>
                   </div>
+                </div>
+
+                {/* Export / Import Shared Presets Bar */}
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    onClick={handleExportAllPresets}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 rounded-lg text-xs font-medium cursor-pointer"
+                    title="Export all furnace and chamber presets to a JSON file for sharing with colleagues"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Export All Presets (.json)
+                  </button>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 rounded-lg text-xs font-medium cursor-pointer"
+                    title="Import presets from a shared JSON file"
+                  >
+                    <Upload className="w-3.5 h-3.5" /> Import Presets
+                  </button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleImportAllPresets}
+                    accept=".json"
+                    className="hidden"
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
