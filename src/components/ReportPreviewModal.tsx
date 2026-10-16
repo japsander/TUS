@@ -68,28 +68,58 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
   const tolerance = CLASS_TOLERANCES[meta.furnaceClass][meta.tempUnit];
 
   const setpointAnalyses = setpoints.map((sp) =>
-    evaluateSetpoint(sp, channels, meta.furnaceClass, meta.tempUnit, instrument.maxPermissibleError)
+    evaluateSetpoint(sp, channels, meta.furnaceClass, meta.tempUnit, instrument.instrumentCorrection)
   );
-  const overallPassed = setpointAnalyses.every((sa) => sa.passed) && channels.length >= minSensors;
+  const overallPassed = 
+    setpointAnalyses.every((sa) => sa.passed) && 
+    channels.length >= minSensors &&
+    checklist.every(item => item.compliant);
 
   const handleDownloadDocx = async () => {
     try {
       setDownloading(true);
       
-      // Capture trend graph if available
+      // 1. Capture Main Full Trend Graph
+      // 1. Capture Main Full Trend Graph
       let trendImageBase64: string | undefined;
       const graphEl = document.getElementById('tus-trend-graph-container');
       if (graphEl) {
         try {
-          // html-to-image handles SVG (recharts) much better than html2canvas
-          trendImageBase64 = await toPng(graphEl, {
+          await new Promise(resolve => setTimeout(resolve, 300));
+          const dataUrl = await toPng(graphEl, {
             quality: 1.0,
             pixelRatio: 2,
             backgroundColor: '#0f172a',
             skipFonts: true,
           });
+          trendImageBase64 = dataUrl;
         } catch (captureErr) {
           console.error('Failed to capture trend graph:', captureErr);
+        }
+      }
+
+      // 2. Capture Individual Soak Zoom-In Graphs
+      const setpointTrendImages: Record<string, string> = {};
+      if (dwellPeriods && trendData) {
+        for (let i = 0; i < dwellPeriods.length; i++) {
+          const dwell = dwellPeriods[i];
+          const spId = setpoints.find(s => Math.abs(s.targetTemp - dwell.targetTemp) < 1)?.id;
+          if (!spId) continue;
+
+          const el = document.getElementById(`sub-trend-capture-${i}`);
+          if (el) {
+            try {
+              const subUrl = await toPng(el, {
+                quality: 1.0,
+                pixelRatio: 3,
+                backgroundColor: '#0f172a',
+                skipFonts: true,
+              });
+              setpointTrendImages[spId] = subUrl;
+            } catch (err) {
+              console.error(`Failed to capture soak graph ${i}:`, err);
+            }
+          }
         }
       }
 
@@ -103,6 +133,7 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
         checklist,
         diagramImageBase64,
         trendImageBase64,
+        setpointTrendImages,
       });
 
       const url = URL.createObjectURL(blob);
@@ -281,6 +312,31 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
               </ul>
             </div>
           </div>
+        </div>
+
+        {/* Hidden Container for Sub-Trend Capture (Off-screen) */}
+        <div style={{ position: 'absolute', top: -9999, left: -9999, width: '1000px' }}>
+          {dwellPeriods?.map((dwell, idx) => {
+            // Buffer of 2 samples before/after for context
+            const buffer = 2;
+            const subData = trendData?.slice(
+              Math.max(0, dwell.startIndex - buffer),
+              Math.min(trendData.length, dwell.endIndex + buffer + 1)
+            ) || [];
+
+            return (
+              <div key={`capture-${idx}`} id={`sub-trend-capture-${idx}`} style={{ width: '1000px', height: '400px' }}>
+                <TusTrendGraph 
+                  data={subData} 
+                  dwells={[dwell]} 
+                  channels={channels} 
+                  tempUnit={meta.tempUnit} 
+                  isZoomed={true}
+                  showLegend={false}
+                />
+              </div>
+            );
+          })}
         </div>
 
         {/* Footer Actions */}

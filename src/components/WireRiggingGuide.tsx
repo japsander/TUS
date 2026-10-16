@@ -35,9 +35,9 @@ export const WireRiggingGuide: React.FC<WireRiggingGuideProps> = ({
   dimUnit,
   onHighlightPair,
 }) => {
-  const plan = getLogicalWireRiggingSchedule(channels, dimUnit);
+  const plan = getLogicalWireRiggingSchedule(channels, qwz, dimUnit);
   const [selectedCategory, setSelectedCategory] = useState<
-    'all' | '3d-diagonal' | 'perimeter-frame' | 'depth-rail' | 'face-brace'
+    'all' | '3d-diagonal' | 'perimeter-frame' | 'depth-rail' | 'face-cross' | 'mid-plane' | 'face-brace'
   >('all');
 
   const filteredCables =
@@ -220,6 +220,8 @@ export const WireRiggingGuide: React.FC<WireRiggingGuideProps> = ({
               { id: '3d-diagonal', label: '3D Diagonals' },
               { id: 'perimeter-frame', label: 'Perimeter Box' },
               { id: 'depth-rail', label: 'Depth Rails' },
+              { id: 'face-cross', label: 'Face Cross-hairs' },
+              { id: 'mid-plane', label: 'Mid-Planes' },
               { id: 'face-brace', label: 'Face Braces' },
             ].map((f) => (
               <button
@@ -265,17 +267,21 @@ export const WireRiggingGuide: React.FC<WireRiggingGuideProps> = ({
                   </td>
                   <td className="py-2.5 px-4">
                     <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
                         c.category === '3d-diagonal'
-                          ? 'bg-blue-950 text-blue-300 border border-blue-800'
+                          ? 'bg-blue-950 text-blue-300 border-blue-800'
                           : c.category === 'perimeter-frame'
-                          ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                          ? 'bg-slate-900 text-slate-300 border-slate-700'
                           : c.category === 'depth-rail'
-                          ? 'bg-purple-950 text-purple-300 border border-purple-800'
-                          : 'bg-slate-800 text-slate-300'
+                          ? 'bg-purple-950 text-purple-300 border-purple-800'
+                          : c.category === 'face-cross'
+                          ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                          : c.category === 'mid-plane'
+                          ? 'bg-amber-950 text-amber-300 border-amber-800'
+                          : 'bg-slate-800 text-slate-300 border-slate-700'
                       }`}
                     >
-                      {c.category}
+                      {c.category.replace('-', ' ')}
                     </span>
                   </td>
                   <td className="py-2.5 px-4 font-sans text-slate-400 text-[11px]">

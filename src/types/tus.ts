@@ -96,6 +96,8 @@ export interface SecondaryStandard {
   calibrationDate: string;
   calibrationDueDate: string;
   traceabilityNumber: string;
+  calibrationLab?: string;
+  calibrationStandard?: string;
 }
 
 export interface TestInstrument {
@@ -114,6 +116,7 @@ export interface TestInstrument {
   calibratedByTechnician?: string;
   asFoundError?: number;
   asLeftError?: number;
+  instrumentCorrection?: number;
   secondaryStandards?: SecondaryStandard[];
 }
 
@@ -169,4 +172,6 @@ export interface DetectedDwellPeriod {
   endTimeSec: number;
   startTimeStr?: string;
   endTimeStr?: string;
+  evalStartIndex?: number; // The specific 30-min window used for report data
+  evalEndIndex?: number;
 }

@@ -320,7 +320,47 @@ function calculateDwellStats(
 ): DetectedDwell {
   const startRow = rows[bestStart];
   const endRow = rows[bestEnd];
-  const durationMin = Math.round((endRow.timestampSec - startRow.timestampSec) / 60);
+  const totalDurationMin = Math.round((endRow.timestampSec - startRow.timestampSec) / 60);
+
+  // 1. Find the Most Stable 30-Minute Consecutive Window
+  // AMS 2750 Rev H requires at least 30 minutes. 
+  // We search for the 30-min window within [bestStart, bestEnd] with the minimum average spread.
+  let evalStart = bestStart;
+  let evalEnd = bestEnd;
+  let minWindowSpread = Infinity;
+
+  const windowSizeMin = 30;
+  const intervalSec = (rows.length > 1) ? rows[1].timestampSec - rows[0].timestampSec : 60;
+  const rowsInWindow = Math.floor((windowSizeMin * 60) / intervalSec);
+
+  if (totalDurationMin > windowSizeMin) {
+    for (let i = bestStart; i <= bestEnd - rowsInWindow; i++) {
+      let maxS = -Infinity;
+      let minS = Infinity;
+      
+      // Calculate spread across all active channels in this sliding window
+      for (let j = i; j < i + rowsInWindow; j++) {
+        for (const map of activeMappings) {
+          const val = rows[j].values[map.csvHeader];
+          if (val !== undefined) {
+            if (val > maxS) maxS = val;
+            if (val < minS) minS = val;
+          }
+        }
+      }
+      
+      const currentSpread = maxS - minS;
+      if (currentSpread < minWindowSpread) {
+        minWindowSpread = currentSpread;
+        evalStart = i;
+        evalEnd = i + rowsInWindow - 1;
+      }
+    }
+  }
+
+  // Use the identified evaluation window for reporting readings
+  const reportStartRow = rows[evalStart];
+  const reportEndRow = rows[evalEnd];
 
   // Search for maximum overshoot including ramping up to this dwell (from prevEndIndex to bestEnd)
   let maxOvershoot = target;
@@ -334,7 +374,6 @@ function calculateDwellStats(
     }
   }
 
-
   const channelReadings: Record<string, number> = {};
   const channelMin: Record<string, number> = {};
   const channelMax: Record<string, number> = {};
@@ -345,13 +384,8 @@ function calculateDwellStats(
     let minV = Infinity;
     let maxV = -Infinity;
 
-    // Use middle 70% for steady state average to avoid edge transients
-    const totalPoints = bestEnd - bestStart + 1;
-    const trim = Math.floor(totalPoints * 0.15);
-    const steadyStart = bestStart + trim;
-    const steadyEnd = bestEnd - trim;
-
-    for (let i = steadyStart; i <= steadyEnd; i++) {
+    // Use the 30-min evaluation window for reported values
+    for (let i = evalStart; i <= evalEnd; i++) {
       const val = rows[i].values[map.csvHeader];
       if (val !== undefined) {
         sum += val;
@@ -374,16 +408,16 @@ function calculateDwellStats(
 
   return {
     targetTemp: target,
-    startIndex: bestStart,
-    endIndex: bestEnd,
-    startTimeStr: startRow.timeStr,
-    endTimeStr: endRow.timeStr,
-    durationMinutes: durationMin,
+    startIndex: evalStart,
+    endIndex: evalEnd,
+    startTimeStr: reportStartRow.timeStr,
+    endTimeStr: reportEndRow.timeStr,
+    durationMinutes: windowSizeMin, // Report the 30 min captured window
     maxOvershoot: Math.round(maxOvershoot * 10) / 10,
     channelReadings,
     channelMin,
     channelMax,
-    isDurationCompliant: durationMin >= minDurationMinutes,
+    isDurationCompliant: totalDurationMin >= minDurationMinutes,
     isSpreadCompliant: maxRead <= target + tolerance && minRead >= target - tolerance,
     tempSpread: spread,
   };
@@ -422,15 +456,38 @@ export function convertToDwellPeriods(
   dwells: DetectedDwell[],
   rows: ParsedCsvRow[]
 ): DetectedDwellPeriod[] {
-  return dwells.map((d) => ({
-    targetTemp: d.targetTemp,
-    startIndex: d.startIndex,
-    endIndex: d.endIndex,
-    startTimeSec: rows[d.startIndex].timestampSec,
-    endTimeSec: rows[d.endIndex].timestampSec,
-    startTimeStr: rows[d.startIndex].timeStr,
-    endTimeStr: rows[d.endIndex].timeStr,
-  }));
+  return dwells.map((d) => {
+    // Determine the 30-min evaluation window (AMS 2750 Rev H requires at least 30 mins)
+    // We prefer the last 30 minutes of the stable period as it's typically the most stabilized.
+    const durationSec = rows[d.endIndex].timestampSec - rows[d.startIndex].timestampSec;
+    const durationMin = durationSec / 60;
+    
+    let evalStartIndex = d.startIndex;
+    let evalEndIndex = d.endIndex;
+
+    if (durationMin > 30) {
+      // Find the index that is 30 mins before the end
+      const targetTimeSec = rows[d.endIndex].timestampSec - (30 * 60);
+      for (let i = d.startIndex; i <= d.endIndex; i++) {
+        if (rows[i].timestampSec >= targetTimeSec) {
+          evalStartIndex = i;
+          break;
+        }
+      }
+    }
+
+    return {
+      targetTemp: d.targetTemp,
+      startIndex: d.startIndex,
+      endIndex: d.endIndex,
+      startTimeSec: rows[d.startIndex].timestampSec,
+      endTimeSec: rows[d.endIndex].timestampSec,
+      startTimeStr: rows[d.startIndex].timeStr,
+      endTimeStr: rows[d.endIndex].timeStr,
+      evalStartIndex,
+      evalEndIndex,
+    };
+  });
 }
 
 

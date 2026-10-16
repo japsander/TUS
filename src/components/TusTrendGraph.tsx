@@ -18,6 +18,8 @@ interface TusTrendGraphProps {
   dwells: DetectedDwellPeriod[];
   channels: ThermocoupleChannel[];
   tempUnit: TempUnit;
+  isZoomed?: boolean;
+  showLegend?: boolean;
 }
 
 const COLORS = [
@@ -30,6 +32,8 @@ export const TusTrendGraph: React.FC<TusTrendGraphProps> = ({
   dwells,
   channels,
   tempUnit,
+  isZoomed = false,
+  showLegend = true,
 }) => {
   if (!data || data.length === 0) {
     return (
@@ -44,52 +48,79 @@ export const TusTrendGraph: React.FC<TusTrendGraphProps> = ({
   // But for typical TUS runs (a few thousand points), recharts should be okay.
   
   return (
-    <div id="tus-trend-graph-container" className="w-full h-[400px] bg-slate-900/40 p-4 rounded-xl border border-slate-800 shadow-inner">
+    <div id={isZoomed ? undefined : "tus-trend-graph-container"} className={`w-full ${isZoomed ? 'h-[300px]' : 'h-[400px]'} bg-slate-900/40 p-4 rounded-xl border border-slate-800 shadow-inner`}>
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
+        <LineChart data={data} margin={{ top: 20, right: 30, left: 0, bottom: isZoomed ? 10 : 20 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
           <XAxis 
             dataKey="timeStr" 
             stroke="#94a3b8" 
             fontSize={10}
             tick={{ fill: '#94a3b8' }}
-            minTickGap={50}
+            minTickGap={isZoomed ? 20 : 50}
           />
           <YAxis 
             stroke="#94a3b8" 
             fontSize={10} 
             tick={{ fill: '#94a3b8' }}
-            label={{ value: `Temp (${tempUnit})`, angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 10 }}
+            label={isZoomed ? undefined : { value: `Temp (${tempUnit})`, angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 10 }}
+            domain={isZoomed ? ['auto', 'auto'] : undefined}
           />
           <Tooltip 
             contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '11px' }}
             itemStyle={{ padding: '0px' }}
           />
-          <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
+          {showLegend && <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />}
           
-          {/* Highlight Dwell Periods */}
+          {/* Highlight Dwell Periods & 30-min Evaluation Windows */}
           {dwells.map((dwell, idx) => {
             const startT = dwell.startTimeStr || data[dwell.startIndex]?.timeStr || '';
             const endT = dwell.endTimeStr || data[dwell.endIndex]?.timeStr || '';
+            
+            const evalStartT = (dwell.evalStartIndex !== undefined) ? data[dwell.evalStartIndex]?.timeStr : null;
+            const evalEndT = (dwell.evalEndIndex !== undefined) ? data[dwell.evalEndIndex]?.timeStr : null;
+
             return (
-              <ReferenceArea
-                key={`dwell-${idx}`}
-                x1={startT}
-                x2={endT}
-                stroke="#34d399"
-                strokeWidth={1.5}
-                strokeDasharray="4 4"
-                strokeOpacity={0.6}
-                fill="#34d399"
-                fillOpacity={0.15}
-                label={{
-                  position: 'insideTop',
-                  value: `${dwell.targetTemp}${tempUnit} Dwell (${startT} - ${endT})`,
-                  fill: '#34d399',
-                  fontSize: 10,
-                  fontWeight: 'bold',
-                }}
-              />
+              <React.Fragment key={`dwell-group-${idx}`}>
+                {/* Background Dwell Area */}
+                {!isZoomed && (
+                  <ReferenceArea
+                    x1={startT}
+                    x2={endT}
+                    stroke="#334155"
+                    strokeWidth={1}
+                    strokeDasharray="3 3"
+                    strokeOpacity={0.4}
+                    fill="#1e293b"
+                    fillOpacity={0.1}
+                  />
+                )}
+                
+                {/* Specific 30-min Evaluation Window (Requested Highlight) */}
+                {evalStartT && evalEndT && (
+                  <>
+                    <ReferenceArea
+                      x1={evalStartT}
+                      x2={evalEndT}
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      fill="#10b981"
+                      fillOpacity={0.35} // Increased opacity
+                      label={{
+                        position: 'insideTop',
+                        value: isZoomed ? `30-Min Capture (${dwell.targetTemp}${tempUnit})` : `Capture Window (${dwell.targetTemp}${tempUnit})`,
+                        fill: '#10b981',
+                        fontSize: 10,
+                        fontWeight: 'bold',
+                        offset: 15
+                      }}
+                    />
+                    {/* Visual markers for start/end */}
+                    <ReferenceLine x={evalStartT} stroke="#10b981" strokeDasharray="3 3" strokeWidth={1} label={{ position: 'left', value: 'Start', fill: '#059669', fontSize: 8 }} />
+                    <ReferenceLine x={evalEndT} stroke="#10b981" strokeDasharray="3 3" strokeWidth={1} label={{ position: 'right', value: 'End', fill: '#059669', fontSize: 8 }} />
+                  </>
+                )}
+              </React.Fragment>
             );
           })}
 
@@ -104,6 +135,7 @@ export const TusTrendGraph: React.FC<TusTrendGraphProps> = ({
               dot={false}
               strokeWidth={1.5}
               activeDot={{ r: 4 }}
+              isAnimationActive={false} // Important for reliable html-to-image capture
             />
           ))}
         </LineChart>

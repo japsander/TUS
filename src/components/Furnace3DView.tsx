@@ -660,7 +660,7 @@ export const Furnace3DView: React.FC<Furnace3DViewProps> = ({
       const riggingGroup = new THREE.Group();
       riggingGroup.name = 'rigging-web-group';
 
-      const plan = getLogicalWireRiggingSchedule(channels, dimUnit);
+      const plan = getLogicalWireRiggingSchedule(channels, qwz, dimUnit);
 
       // Material for 4 Main 3D Cross-Body Diagonals (High-Visibility Cyan tension cables)
       const diagMat = new THREE.MeshStandardMaterial({
@@ -676,6 +676,31 @@ export const Furnace3DView: React.FC<Furnace3DViewProps> = ({
         color: 0x94a3b8,
         metalness: 0.85,
         roughness: 0.3,
+      });
+
+      // Material for face-cross stabilizers (Emerald)
+      const crossMat = new THREE.MeshStandardMaterial({
+        color: 0x10b981,
+        metalness: 0.7,
+        roughness: 0.3,
+        emissive: 0x059669,
+        emissiveIntensity: 0.2,
+      });
+
+      // Material for internal mid-planes (Amber)
+      const planeMat = new THREE.MeshStandardMaterial({
+        color: 0xd97706,
+        metalness: 0.7,
+        roughness: 0.3,
+        emissive: 0xb45309,
+        emissiveIntensity: 0.2,
+      });
+
+      // Material for extra radial braces
+      const braceMat = new THREE.MeshStandardMaterial({
+        color: 0x64748b,
+        transparent: true,
+        opacity: 0.6,
       });
 
       // Render 4 opposite-corner continuous diagonals (passing through center hub)
@@ -708,20 +733,28 @@ export const Furnace3DView: React.FC<Furnace3DViewProps> = ({
         riggingGroup.add(hub);
       }
 
-      // Render 12 perimeter frame cables and depth rails
-      plan.cables
-        .filter((c) => c.category === 'perimeter-frame' || c.category === 'depth-rail')
-        .forEach((c) => {
-          const fromCh = channels.find((ch) => ch.channelNumber === c.fromChannelNum);
-          const toCh = channels.find((ch) => ch.channelNumber === c.toChannelNum);
-          if (fromCh && toCh) {
-            const p1 = toLocal(fromCh.x, fromCh.y, fromCh.z);
-            const p2 = toLocal(toCh.x, toCh.y, toCh.z);
-            const curve = new THREE.LineCurve3(p1, p2);
-            const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 8, 0.28, 6, false), frameMat);
-            riggingGroup.add(tube);
-          }
-        });
+      // Render all other plan cables
+      plan.cables.forEach((c) => {
+        // Skip diagonals as they are handled above with spline curves
+        if (c.category === '3d-diagonal') return;
+
+        const fromCh = channels.find((ch) => ch.channelNumber === c.fromChannelNum);
+        const toCh = channels.find((ch) => ch.channelNumber === c.toChannelNum);
+        if (fromCh && toCh) {
+          const p1 = toLocal(fromCh.x, fromCh.y, fromCh.z);
+          const p2 = toLocal(toCh.x, toCh.y, toCh.z);
+          const curve = new THREE.LineCurve3(p1, p2);
+          
+          let mat = frameMat;
+          let radius = 0.28;
+          if (c.category === 'face-cross') { mat = crossMat; radius = 0.22; }
+          else if (c.category === 'mid-plane') { mat = planeMat; radius = 0.22; }
+          else if (c.category === 'face-brace') { mat = braceMat; radius = 0.15; }
+
+          const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 8, radius, 6, false), mat);
+          riggingGroup.add(tube);
+        }
+      });
 
       group.add(riggingGroup);
     }

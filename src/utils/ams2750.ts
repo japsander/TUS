@@ -178,7 +178,7 @@ export function computeSensorDistances(
 export function generateStandardAMS2750Sensors(
   chamber: FurnaceChamber,
   qwz: QualifiedWorkZone,
-  count: number = 21
+  count: number = 9
 ): ThermocoupleChannel[] {
   const xMin = qwz.offsetFront;
   const xMax = qwz.offsetFront + qwz.length;
@@ -192,110 +192,146 @@ export function generateStandardAMS2750Sensors(
   const zMax = qwz.offsetLeft + qwz.width;
   const zMid = (zMin + zMax) / 2;
 
-  // Exact 21-point pattern from Picture 1 (AMS 2750 standard pyrometry schematic)
-  const picture1_21 = [
-    { num: 1, label: 'TC 1: Front Upper Left Corner', x: xMin, y: yMax, z: zMin },
-    { num: 2, label: 'TC 2: Front Upper Right Corner', x: xMin, y: yMax, z: zMax },
-    { num: 3, label: 'TC 3: Front Lower Right Corner', x: xMin, y: yMin, z: zMax },
-    { num: 4, label: 'TC 4: Front Lower Left Corner', x: xMin, y: yMin, z: zMin },
-    { num: 5, label: 'TC 5: Left Face Lower Mid', x: xMid, y: (yMin + yMid) / 2, z: zMin },
-    { num: 6, label: 'TC 6: Left Face Upper Mid', x: xMid, y: (yMax + yMid) / 2, z: zMin },
-    { num: 7, label: 'TC 7: Top Face Center Diagonal', x: (xMin + xMid) / 2, y: yMax, z: (zMin + zMax) / 2 },
-    { num: 8, label: 'TC 8: Bottom Face Center Diagonal', x: (xMax + xMid) / 2, y: yMin, z: (zMin + zMax) / 2 },
-    { num: 9, label: 'TC 9: Rear Left Lower Diagonal', x: (xMax + xMid) / 2, y: (yMin + yMid) / 2, z: zMin },
-    { num: 10, label: 'TC 10: Front Left Mid Edge', x: xMin, y: yMid, z: zMin },
-    { num: 11, label: 'TC 11: Geometric Center (Spider Hub)', x: xMid, y: yMid, z: zMid },
-    { num: 12, label: 'TC 12: Right Face Mid Edge', x: (xMax + xMid) / 2, y: yMid, z: zMax },
-    { num: 13, label: 'TC 13: Top Rear Diagonal Mid', x: xMid, y: yMax, z: (zMin + zMid) / 2 },
-    { num: 14, label: 'TC 14: Right Rear Upper Diagonal', x: (xMin + xMid) / 2, y: (yMax + yMid) / 2, z: zMax },
-    { num: 15, label: 'TC 15: Right Front Lower Diagonal', x: (xMin + xMid) / 2, y: (yMin + yMid) / 2, z: zMax },
-    { num: 16, label: 'TC 16: Front Bottom Diagonal Mid', x: (xMin + xMid) / 2, y: yMin, z: zMid },
-    { num: 17, label: 'TC 17: Rear Upper Left Corner', x: xMax, y: yMax, z: zMin },
-    { num: 18, label: 'TC 18: Rear Upper Right Corner', x: xMax, y: yMax, z: zMax },
-    { num: 19, label: 'TC 19: Rear Lower Right Corner', x: xMax, y: yMin, z: zMax },
-    { num: 20, label: 'TC 20: Rear Lower Left Corner', x: xMax, y: yMin, z: zMin },
-    { num: 21, label: 'TC 21: Right Face Upper Mid', x: xMid, y: yMid, z: zMax },
+  // Handle specific high-density symmetrical layouts
+  if (count === 36) {
+    const points: Array<{ label: string; x: number; y: number; z: number }> = [];
+    const xPositions = [xMin, xMin + qwz.length / 3, xMin + (qwz.length * 2) / 3, xMax];
+    const yPositions = [yMin, yMid, yMax];
+    const zPositions = [zMin, zMid, zMax];
+
+    let tcNum = 1;
+    xPositions.forEach((x, xi) => {
+      yPositions.forEach((y, yi) => {
+        zPositions.forEach((z, zi) => {
+          const xLabel = xi === 0 ? 'Front' : xi === 3 ? 'Rear' : `Plane ${xi + 1}`;
+          const yLabel = yi === 0 ? 'Bottom' : yi === 1 ? 'Mid' : 'Top';
+          const zLabel = zi === 0 ? 'Left' : zi === 1 ? 'Center' : 'Right';
+          points.push({
+            label: `${xLabel} ${yLabel} ${zLabel}`,
+            x, y, z
+          });
+        });
+      });
+    });
+    // This generates exactly 4 * 3 * 3 = 36 points
+    return points.map((p, idx) => {
+      const channelNumber = idx + 1;
+      const dist = computeSensorDistances(p.x, p.y, p.z, chamber);
+      const qL = Math.max(1, qwz.length);
+      const qH = Math.max(1, qwz.height);
+      const qW = Math.max(1, qwz.width);
+      const ux = Math.max(0, Math.min(1, (p.x - qwz.offsetFront) / qL));
+      const uy = Math.max(0, Math.min(1, (p.y - qwz.offsetFloor) / qH));
+      const uz = Math.max(0, Math.min(1, (p.z - qwz.offsetLeft) / qW));
+
+      const today = new Date().toISOString().split('T')[0];
+      const expiry = new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString().split('T')[0];
+
+      return {
+        id: `tc-${channelNumber}`,
+        channelNumber,
+        label: p.label,
+        type: 'N',
+        rollLotNumber: '',
+        calibrationDate: today,
+        expirationDate: expiry,
+        recorderChannel: `CH-${String(channelNumber).padStart(2, '0')}`,
+        ...dist,
+        x: p.x,
+        y: p.y,
+        z: p.z,
+        ux, uy, uz,
+        correctionFactors: {}
+      };
+    });
+  }
+
+  const pool: Array<{ label: string; x: number; y: number; z: number }> = [
+    // 1. Center Hub (Critical Anchor)
+    { label: 'Geometric Center (Spider Hub)', x: xMid, y: yMid, z: zMid },
+
+    // 2. 8 Corners (Standard Envelope)
+    { label: 'Front Upper Left Corner', x: xMin, y: yMax, z: zMin },
+    { label: 'Front Upper Right Corner', x: xMin, y: yMax, z: zMax },
+    { label: 'Front Lower Left Corner', x: xMin, y: yMin, z: zMin },
+    { label: 'Front Lower Right Corner', x: xMin, y: yMin, z: zMax },
+    { label: 'Rear Upper Left Corner', x: xMax, y: yMax, z: zMin },
+    { label: 'Rear Upper Right Corner', x: xMax, y: yMax, z: zMax },
+    { label: 'Rear Lower Left Corner', x: xMax, y: yMin, z: zMin },
+    { label: 'Rear Lower Right Corner', x: xMax, y: yMin, z: zMax },
+
+    // 3. 6 Face Centers (Standard for 13/14/15 point TUS)
+    { label: 'Top Face Center', x: xMid, y: yMax, z: zMid },
+    { label: 'Bottom Face Center', x: xMid, y: yMin, z: zMid },
+    { label: 'Left Face Center', x: xMid, y: yMid, z: zMin },
+    { label: 'Right Face Center', x: xMid, y: yMid, z: zMax },
+    { label: 'Front Face Center', x: xMin, y: yMid, z: zMid },
+    { label: 'Rear Face Center', x: xMax, y: yMid, z: zMid },
+
+    // 4. 12 Edge Centers (Refinement for High-Density 27 point TUS)
+    { label: 'Front Top Edge Mid', x: xMin, y: yMax, z: zMid },
+    { label: 'Front Bottom Edge Mid', x: xMin, y: yMin, z: zMid },
+    { label: 'Front Left Edge Mid', x: xMin, y: yMid, z: zMin },
+    { label: 'Front Right Edge Mid', x: xMin, y: yMid, z: zMax },
+    { label: 'Rear Top Edge Mid', x: xMax, y: yMax, z: zMid },
+    { label: 'Rear Bottom Edge Mid', x: xMax, y: yMin, z: zMid },
+    { label: 'Rear Left Edge Mid', x: xMax, y: yMid, z: zMin },
+    { label: 'Rear Right Edge Mid', x: xMax, y: yMid, z: zMax },
+    { label: 'Top Left Edge Mid', x: xMid, y: yMax, z: zMin },
+    { label: 'Top Right Edge Mid', x: xMid, y: yMax, z: zMax },
+    { label: 'Bottom Left Edge Mid', x: xMid, y: yMin, z: zMin },
+    { label: 'Bottom Right Edge Mid', x: xMid, y: yMin, z: zMax },
+
+    // 5. 24 Edge Quarters (Symmetrical quads for balanced high-density layouts)
+    // Quad A: Front Face Horizontals
+    { label: 'Front Top Edge 1/4', x: xMin, y: yMax, z: zMin + qwz.width * 0.25 },
+    { label: 'Front Top Edge 3/4', x: xMin, y: yMax, z: zMin + qwz.width * 0.75 },
+    { label: 'Front Bottom Edge 1/4', x: xMin, y: yMin, z: zMin + qwz.width * 0.25 },
+    { label: 'Front Bottom Edge 3/4', x: xMin, y: yMin, z: zMin + qwz.width * 0.75 },
+
+    // Quad B: Rear Face Horizontals
+    { label: 'Rear Top Edge 1/4', x: xMax, y: yMax, z: zMin + qwz.width * 0.25 },
+    { label: 'Rear Top Edge 3/4', x: xMax, y: yMax, z: zMin + qwz.width * 0.75 },
+    { label: 'Rear Bottom Edge 1/4', x: xMax, y: yMin, z: zMin + qwz.width * 0.25 },
+    { label: 'Rear Bottom Edge 3/4', x: xMax, y: yMin, z: zMin + qwz.width * 0.75 },
+
+    // Quad C: Top Face Lengths
+    { label: 'Top Left Edge 1/4', x: xMin + qwz.length * 0.25, y: yMax, z: zMin },
+    { label: 'Top Left Edge 3/4', x: xMin + qwz.length * 0.75, y: yMax, z: zMin },
+    { label: 'Top Right Edge 1/4', x: xMin + qwz.length * 0.25, y: yMax, z: zMax },
+    { label: 'Top Right Edge 3/4', x: xMin + qwz.length * 0.75, y: yMax, z: zMax },
+
+    // Quad D: Bottom Face Lengths
+    { label: 'Bottom Left Edge 1/4', x: xMin + qwz.length * 0.25, y: yMin, z: zMin },
+    { label: 'Bottom Left Edge 3/4', x: xMin + qwz.length * 0.75, y: yMin, z: zMin },
+    { label: 'Bottom Right Edge 1/4', x: xMin + qwz.length * 0.25, y: yMin, z: zMax },
+    { label: 'Bottom Right Edge 3/4', x: xMin + qwz.length * 0.75, y: yMin, z: zMax },
+
+    // Quad E: Front/Rear Vertical Posts
+    { label: 'Front Left Edge 1/4', x: xMin, y: yMin + qwz.height * 0.25, z: zMin },
+    { label: 'Front Left Edge 3/4', x: xMin, y: yMin + qwz.height * 0.75, z: zMin },
+    { label: 'Front Right Edge 1/4', x: xMin, y: yMin + qwz.height * 0.25, z: zMax },
+    { label: 'Front Right Edge 3/4', x: xMin, y: yMin + qwz.height * 0.75, z: zMax },
+
+    // Quad F: Rear Vertical Posts
+    { label: 'Rear Left Edge 1/4', x: xMax, y: yMin + qwz.height * 0.25, z: zMin },
+    { label: 'Rear Left Edge 3/4', x: xMax, y: yMin + qwz.height * 0.75, z: zMin },
+    { label: 'Rear Right Edge 1/4', x: xMax, y: yMin + qwz.height * 0.25, z: zMax },
+    { label: 'Rear Right Edge 3/4', x: xMax, y: yMin + qwz.height * 0.75, z: zMax },
   ];
 
-  // 13-point pattern (AMS 2750 Rev H Table 11 Minimum for 15 m³ / 530 ft³):
-  // 8 corners + 1 center + 4 face centers (Top, Bottom, Left, Right)
-  const pattern13 = [
-    { num: 1, label: 'TC 1: Front Upper Left Corner', x: xMin, y: yMax, z: zMin },
-    { num: 2, label: 'TC 2: Front Upper Right Corner', x: xMin, y: yMax, z: zMax },
-    { num: 3, label: 'TC 3: Front Lower Right Corner', x: xMin, y: yMin, z: zMax },
-    { num: 4, label: 'TC 4: Front Lower Left Corner', x: xMin, y: yMin, z: zMin },
-    { num: 5, label: 'TC 5: Geometric Center', x: xMid, y: yMid, z: zMid },
-    { num: 6, label: 'TC 6: Rear Upper Left Corner', x: xMax, y: yMax, z: zMin },
-    { num: 7, label: 'TC 7: Rear Upper Right Corner', x: xMax, y: yMax, z: zMax },
-    { num: 8, label: 'TC 8: Rear Lower Right Corner', x: xMax, y: yMin, z: zMax },
-    { num: 9, label: 'TC 9: Rear Lower Left Corner', x: xMax, y: yMin, z: zMin },
-    { num: 10, label: 'TC 10: Top Face Center', x: xMid, y: yMax, z: zMid },
-    { num: 11, label: 'TC 11: Bottom Face Center', x: xMid, y: yMin, z: zMid },
-    { num: 12, label: 'TC 12: Left Face Center', x: xMid, y: yMid, z: zMin },
-    { num: 13, label: 'TC 13: Right Face Center', x: xMid, y: yMid, z: zMax },
-  ];
+  // Select points from pool based on count
+  const rawList = [];
+  for (let i = 0; i < Math.min(count, pool.length); i++) {
+    rawList.push({ num: i + 1, ...pool[i] });
+  }
 
-  // Classic 9-Point Pattern (8 corners + 1 center)
-  const default9 = [
-    { num: 1, label: 'TC 1: Front Upper Left Corner', x: xMin, y: yMax, z: zMin },
-    { num: 2, label: 'TC 2: Front Upper Right Corner', x: xMin, y: yMax, z: zMax },
-    { num: 3, label: 'TC 3: Front Lower Left Corner', x: xMin, y: yMin, z: zMin },
-    { num: 4, label: 'TC 4: Front Lower Right Corner', x: xMin, y: yMin, z: zMax },
-    { num: 5, label: 'TC 5: Geometric Center', x: xMid, y: yMid, z: zMid },
-    { num: 6, label: 'TC 6: Rear Upper Left Corner', x: xMax, y: yMax, z: zMin },
-    { num: 7, label: 'TC 7: Rear Upper Right Corner', x: xMax, y: yMax, z: zMax },
-    { num: 8, label: 'TC 8: Rear Lower Left Corner', x: xMax, y: yMin, z: zMin },
-    { num: 9, label: 'TC 9: Rear Lower Right Corner', x: xMax, y: yMin, z: zMax },
-  ];
-
-  let rawList: Array<{ num: number; label: string; x: number; y: number; z: number }>;
-  if (count === 21) {
-    rawList = picture1_21;
-  } else if (count === 13) {
-    rawList = pattern13;
-  } else if (count === 9) {
-    rawList = default9;
-  } else if (count === 14) {
-    rawList = [
-      ...pattern13,
-      { num: 14, label: 'TC 14: Front Face Center', x: xMin, y: yMid, z: zMid },
-    ];
-  } else if (count < 21) {
-    // Ensure all 8 corners and center are always included
-    const base8CornersAndCenter = [
-      { num: 1, label: 'TC 1: Front Upper Left Corner', x: xMin, y: yMax, z: zMin },
-      { num: 2, label: 'TC 2: Front Upper Right Corner', x: xMin, y: yMax, z: zMax },
-      { num: 3, label: 'TC 3: Front Lower Right Corner', x: xMin, y: yMin, z: zMax },
-      { num: 4, label: 'TC 4: Front Lower Left Corner', x: xMin, y: yMin, z: zMin },
-      { num: 5, label: 'TC 5: Geometric Center', x: xMid, y: yMid, z: zMid },
-      { num: 6, label: 'TC 6: Rear Upper Left Corner', x: xMax, y: yMax, z: zMin },
-      { num: 7, label: 'TC 7: Rear Upper Right Corner', x: xMax, y: yMax, z: zMax },
-      { num: 8, label: 'TC 8: Rear Lower Right Corner', x: xMax, y: yMin, z: zMax },
-      { num: 9, label: 'TC 9: Rear Lower Left Corner', x: xMax, y: yMin, z: zMin },
-    ];
-    const extraPointsPool = [
-      { num: 10, label: 'TC 10: Top Face Center', x: xMid, y: yMax, z: zMid },
-      { num: 11, label: 'TC 11: Bottom Face Center', x: xMid, y: yMin, z: zMid },
-      { num: 12, label: 'TC 12: Left Face Center', x: xMid, y: yMid, z: zMin },
-      { num: 13, label: 'TC 13: Right Face Center', x: xMid, y: yMid, z: zMax },
-      { num: 14, label: 'TC 14: Front Face Center', x: xMin, y: yMid, z: zMid },
-      { num: 15, label: 'TC 15: Rear Face Center', x: xMax, y: yMid, z: zMid },
-      { num: 16, label: 'TC 16: Front Left Mid Edge', x: xMin, y: yMid, z: zMin },
-      { num: 17, label: 'TC 17: Front Right Mid Edge', x: xMin, y: yMid, z: zMax },
-      { num: 18, label: 'TC 18: Rear Left Mid Edge', x: xMax, y: yMid, z: zMin },
-      { num: 19, label: 'TC 19: Rear Right Mid Edge', x: xMax, y: yMid, z: zMax },
-      { num: 20, label: 'TC 20: Top Left Mid Edge', x: xMid, y: yMax, z: zMin },
-    ];
-    rawList = [...base8CornersAndCenter];
-    for (let i = 0; i < count - 9; i++) {
-      if (extraPointsPool[i]) rawList.push(extraPointsPool[i]);
-    }
-  } else {
-    rawList = [...picture1_21];
-    for (let i = 22; i <= count; i++) {
+  // If user requested more than pool, subdivide internal volume or add random-ish but zone-compliant points
+  if (count > pool.length) {
+    for (let i = pool.length + 1; i <= count; i++) {
       rawList.push({
         num: i,
-        label: `TC ${i}: Zone Position`,
+        label: `TC ${i}: Internal Grid Point`,
         x: xMin + Math.random() * (xMax - xMin),
         y: yMin + Math.random() * (yMax - yMin),
         z: zMin + Math.random() * (zMax - zMin),
@@ -355,7 +391,7 @@ export function calcDistance3D(
 export interface WireRiggingCable {
   id: string;
   stepNumber: number;
-  category: '3d-diagonal' | 'perimeter-frame' | 'depth-rail' | 'face-brace';
+  category: '3d-diagonal' | 'perimeter-frame' | 'depth-rail' | 'face-cross' | 'mid-plane' | 'face-brace';
   title: string;
   fromChannelNum: number;
   fromLabel: string;
@@ -385,12 +421,13 @@ export interface WireRiggingPlan {
  * systematically construct the physical TUS spider web out of wire rope or tie-wire.
  *
  * Sequence:
- * 1. Opposite-Corner 3D Tension Diagonals (e.g. Bottom-Left-Front to Upper-Right-Rear through Center Hub)
- * 2. 12-Cable Perimeter Box Frame (Front rectangle, Rear rectangle, 4 Depth rails)
- * 3. Face Stabilizer Braces & Mid-Point Sensor Struts
+ * 1. Opposite-Corner 3D Tension Diagonals (through Center Hub)
+ * 2. 12-Cable Perimeter Box Frame (QWZ Boundaries)
+ * 3. Face-Cross & Mid-Plane Stabilizers (Center-edge to center-edge, center-face to center-face)
  */
 export function getLogicalWireRiggingSchedule(
   channels: ThermocoupleChannel[],
+  qwz: QualifiedWorkZone,
   dimUnit: DimUnit = 'mm'
 ): WireRiggingPlan {
   if (!channels || channels.length === 0) {
@@ -437,24 +474,19 @@ export function getLogicalWireRiggingSchedule(
     }
   };
 
-  // Dynamically and robustly detect the 8 corners and center hub by 3D coordinates
-  // Works with 9-point, 13-point, 14-point, 21-point, or custom arrays!
-  const sortedByX = [...channels].sort((a, b) => a.x - b.x);
-  const minX = sortedByX[0]?.x ?? 0;
-  const maxX = sortedByX[sortedByX.length - 1]?.x ?? 0;
-  const midX = (minX + maxX) / 2;
+  // 1. Identify 8 Corners & Center Hub based on QWZ geometry
+  const xMin = qwz.offsetFront;
+  const xMax = qwz.offsetFront + qwz.length;
+  const xMid = (xMin + xMax) / 2;
 
-  const sortedByY = [...channels].sort((a, b) => a.y - b.y);
-  const minY = sortedByY[0]?.y ?? 0;
-  const maxY = sortedByY[sortedByY.length - 1]?.y ?? 0;
-  const midY = (minY + maxY) / 2;
+  const yMin = qwz.offsetFloor;
+  const yMax = qwz.offsetFloor + qwz.height;
+  const yMid = (yMin + yMax) / 2;
 
-  const sortedByZ = [...channels].sort((a, b) => a.z - b.z);
-  const minZ = sortedByZ[0]?.z ?? 0;
-  const maxZ = sortedByZ[sortedByZ.length - 1]?.z ?? 0;
-  const midZ = (minZ + maxZ) / 2;
+  const zMin = qwz.offsetLeft;
+  const zMax = qwz.offsetLeft + qwz.width;
+  const zMid = (zMin + zMax) / 2;
 
-  // Closest channel helper
   const findClosest = (tx: number, ty: number, tz: number, excludeIds: Set<string> = new Set()) => {
     let closest: ThermocoupleChannel | undefined = undefined;
     let minDist = Infinity;
@@ -469,176 +501,188 @@ export function getLogicalWireRiggingSchedule(
     return closest || channels[0];
   };
 
-  const centerCh =
-    channels.find((c) => c.label.toLowerCase().includes('center') || c.label.toLowerCase().includes('hub')) ||
-    findClosest(midX, midY, midZ);
-  const centerNum = centerCh?.channelNumber ?? 0;
+  const corners = {
+    fBL: findClosest(xMin, yMin, zMin),
+    fBR: findClosest(xMin, yMin, zMax),
+    fTL: findClosest(xMin, yMax, zMin),
+    fTR: findClosest(xMin, yMax, zMax),
+    rBL: findClosest(xMax, yMin, zMin),
+    rBR: findClosest(xMax, yMin, zMax),
+    rTL: findClosest(xMax, yMax, zMin),
+    rTR: findClosest(xMax, yMax, zMax),
+  };
 
-  // 4 Front corners (x ≈ minX)
-  const chFBL = findClosest(minX, minY, minZ); // Front Bottom Left
-  const chFBR = findClosest(minX, minY, maxZ); // Front Bottom Right
-  const chFTL = findClosest(minX, maxY, minZ); // Front Top Left
-  const chFTR = findClosest(minX, maxY, maxZ); // Front Top Right
+  // Identify intended Hub sensor (closest to center)
+  const closestToCenter = 
+    channels.find(c => c.label.toLowerCase().includes('center') || c.label.toLowerCase().includes('hub')) ||
+    findClosest(xMid, yMid, zMid);
+  
+  // Proximity check: is this sensor actually near the center?
+  const centerDist = Math.hypot(closestToCenter.x - xMid, closestToCenter.y - yMid, closestToCenter.z - zMid);
+  const minDim = Math.min(qwz.length, qwz.width, qwz.height);
+  const hubSensor = centerDist < minDim * 0.2 ? closestToCenter : null;
+  const centerNum = hubSensor?.channelNumber ?? 0;
 
-  // 4 Rear corners (x ≈ maxX)
-  const chRBL = findClosest(maxX, minY, minZ); // Rear Bottom Left
-  const chRBR = findClosest(maxX, minY, maxZ); // Rear Bottom Right
-  const chRTL = findClosest(maxX, maxY, minZ); // Rear Top Left
-  const chRTR = findClosest(maxX, maxY, maxZ); // Rear Top Right
-
-  const fBL = chFBL?.channelNumber ?? 0;
-  const fBR = chFBR?.channelNumber ?? 0;
-  const fTL = chFTL?.channelNumber ?? 0;
-  const fTR = chFTR?.channelNumber ?? 0;
-
-  const rBL = chRBL?.channelNumber ?? 0;
-  const rBR = chRBR?.channelNumber ?? 0;
-  const rTL = chRTL?.channelNumber ?? 0;
-  const rTR = chRTR?.channelNumber ?? 0;
-
-  const is21Point = map.has(21) && map.has(1) && map.has(17);
+  const structuralIds = new Set<number>();
+  if (hubSensor) structuralIds.add(hubSensor.channelNumber);
+  Object.values(corners).forEach(c => structuralIds.add(c.channelNumber));
 
   // -----------------------------------------------------------
-  // STEP 1: 4 MAIN 3D CROSS-BODY DIAGONALS (OPPOSITE CORNERS THROUGH CENTER HUB)
+  // STEP 1: 4 MAIN 3D CROSS-BODY DIAGONALS (THROUGH CENTER HUB)
   // -----------------------------------------------------------
-  // Diagonal 1: Front Bottom Left <-> Center Hub <-> Rear Top Right
-  if (chFBL && centerCh && chRTR) {
-    const span = calcDistance3D(chFBL, chRTR);
-    oppositeCornerDiagonals.push({
-      id: 'diag-1',
-      title: 'Diagonal 1: Bottom-Left-Front to Upper-Right-Rear',
-      cornerA: chFBL,
-      center: centerCh,
-      cornerB: chRTR,
-      totalSpanLength: span,
-      description: `Continuous opposite-corner diagonal tension cable spanning from TC ${fBL} (Front Bottom Left) through Center Hub TC ${centerNum} to TC ${rTR} (Rear Top Right). Cut length: ${span} ${dimUnit}.`,
-    });
-    addCable(fBL, centerNum, '3d-diagonal', `Main Diagonal 1A (TC ${fBL} ➔ Center TC ${centerNum})`, `Tension span from Front Bottom Left to Center Hub`);
-    addCable(centerNum, rTR, '3d-diagonal', `Main Diagonal 1B (Center TC ${centerNum} ➔ TC ${rTR})`, `Tension span from Center Hub to Rear Top Right`);
-  }
+  const diagPairs: Array<[keyof typeof corners, keyof typeof corners, string]> = [
+    ['fBL', 'rTR', 'Diagonal 1: Front-Bottom-Left to Rear-Top-Right'],
+    ['fBR', 'rTL', 'Diagonal 2: Front-Bottom-Right to Rear-Top-Left'],
+    ['fTL', 'rBR', 'Diagonal 3: Front-Top-Left to Rear-Bottom-Right'],
+    ['fTR', 'rBL', 'Diagonal 4: Front-Top-Right to Rear-Bottom-Left'],
+  ];
 
-  // Diagonal 2: Front Bottom Right <-> Center Hub <-> Rear Top Left
-  if (chFBR && centerCh && chRTL) {
-    const span = calcDistance3D(chFBR, chRTL);
-    oppositeCornerDiagonals.push({
-      id: 'diag-2',
-      title: 'Diagonal 2: Bottom-Right-Front to Upper-Left-Rear',
-      cornerA: chFBR,
-      center: centerCh,
-      cornerB: chRTL,
-      totalSpanLength: span,
-      description: `Continuous opposite-corner diagonal tension cable spanning from TC ${fBR} (Front Bottom Right) through Center Hub TC ${centerNum} to TC ${rTL} (Rear Top Left). Cut length: ${span} ${dimUnit}.`,
-    });
-    addCable(fBR, centerNum, '3d-diagonal', `Main Diagonal 2A (TC ${fBR} ➔ Center TC ${centerNum})`, `Tension span from Front Bottom Right to Center Hub`);
-    addCable(centerNum, rTL, '3d-diagonal', `Main Diagonal 2B (Center TC ${centerNum} ➔ TC ${rTL})`, `Tension span from Center Hub to Rear Top Left`);
-  }
-
-  // Diagonal 3: Front Top Left <-> Center Hub <-> Rear Bottom Right
-  if (chFTL && centerCh && chRBR) {
-    const span = calcDistance3D(chFTL, chRBR);
-    oppositeCornerDiagonals.push({
-      id: 'diag-3',
-      title: 'Diagonal 3: Upper-Left-Front to Lower-Right-Rear',
-      cornerA: chFTL,
-      center: centerCh,
-      cornerB: chRBR,
-      totalSpanLength: span,
-      description: `Continuous opposite-corner diagonal tension cable spanning from TC ${fTL} (Front Top Left) through Center Hub TC ${centerNum} to TC ${rBR} (Rear Bottom Right). Cut length: ${span} ${dimUnit}.`,
-    });
-    addCable(fTL, centerNum, '3d-diagonal', `Main Diagonal 3A (TC ${fTL} ➔ Center TC ${centerNum})`, `Tension span from Front Top Left to Center Hub`);
-    addCable(centerNum, rBR, '3d-diagonal', `Main Diagonal 3B (Center TC ${centerNum} ➔ TC ${rBR})`, `Tension span from Center Hub to Rear Bottom Right`);
-  }
-
-  // Diagonal 4: Front Top Right <-> Center Hub <-> Rear Bottom Left
-  if (chFTR && centerCh && chRBL) {
-    const span = calcDistance3D(chFTR, chRBL);
-    oppositeCornerDiagonals.push({
-      id: 'diag-4',
-      title: 'Diagonal 4: Upper-Right-Front to Lower-Left-Rear',
-      cornerA: chFTR,
-      center: centerCh,
-      cornerB: chRBL,
-      totalSpanLength: span,
-      description: `Continuous opposite-corner diagonal tension cable spanning from TC ${fTR} (Front Top Right) through Center Hub TC ${centerNum} to TC ${rBL} (Rear Bottom Left). Cut length: ${span} ${dimUnit}.`,
-    });
-    addCable(fTR, centerNum, '3d-diagonal', `Main Diagonal 4A (TC ${fTR} ➔ Center TC ${centerNum})`, `Tension span from Front Top Right to Center Hub`);
-    addCable(centerNum, rBL, '3d-diagonal', `Main Diagonal 4B (Center TC ${centerNum} ➔ TC ${rBL})`, `Tension span from Center Hub to Rear Bottom Left`);
-  }
+  diagPairs.forEach(([c1, c2, title], idx) => {
+    const a = corners[c1];
+    const b = corners[c2];
+    
+    if (hubSensor && a.id !== hubSensor.id && b.id !== hubSensor.id) {
+      // Split diagonal through the hub so they explicitly "meet" there
+      addCable(a.channelNumber, centerNum, '3d-diagonal', `${title} (Part A)`, 'Radial spider leg to Hub');
+      addCable(centerNum, b.channelNumber, '3d-diagonal', `${title} (Part B)`, 'Radial spider leg to Hub');
+      
+      const span = calcDistance3D(a, b);
+      oppositeCornerDiagonals.push({
+        id: `diag-${idx + 1}`,
+        title,
+        cornerA: a,
+        center: hubSensor,
+        cornerB: b,
+        totalSpanLength: span,
+        description: `Opposite-corner diagonal intersecting at Center Hub (TC ${centerNum}).`,
+      });
+    } else {
+      // Direct diagonal if no hub sensor exists or if corner is the hub
+      addCable(a.channelNumber, b.channelNumber, '3d-diagonal', title, 'Direct opposite-corner tension cable');
+    }
+  });
 
   // -----------------------------------------------------------
-  // STEP 2: 12-CABLE PERIMETER BOUNDARY BOX (FRAME OUTLINE)
+  // STEP 2: 12-CABLE PERIMETER BOX FRAME (QWZ BOUNDARIES)
   // -----------------------------------------------------------
-  // Front Perimeter Rectangle (4 edges)
-  addCable(fTL, fTR, 'perimeter-frame', `Front Top Rail (TC ${fTL} ➔ TC ${fTR})`, 'Upper horizontal boundary wire across front door opening');
-  addCable(fTR, fBR, 'perimeter-frame', `Front Right Post (TC ${fTR} ➔ TC ${fBR})`, 'Right vertical boundary wire on front face');
-  addCable(fBR, fBL, 'perimeter-frame', `Front Bottom Rail (TC ${fBR} ➔ TC ${fBL})`, 'Lower horizontal boundary wire across front hearth floor');
-  addCable(fBL, fTL, 'perimeter-frame', `Front Left Post (TC ${fBL} ➔ TC ${fTL})`, 'Left vertical boundary wire on front face');
+  const { fBL, fBR, fTL, fTR, rBL, rBR, rTL, rTR } = corners;
+  
+  // Front Face
+  addCable(fTL.channelNumber, fTR.channelNumber, 'perimeter-frame', 'Front Top Rail', 'Structural frame');
+  addCable(fTR.channelNumber, fBR.channelNumber, 'perimeter-frame', 'Front Right Post', 'Structural frame');
+  addCable(fBR.channelNumber, fBL.channelNumber, 'perimeter-frame', 'Front Bottom Rail', 'Structural frame');
+  addCable(fBL.channelNumber, fTL.channelNumber, 'perimeter-frame', 'Front Left Post', 'Structural frame');
 
-  // Rear Perimeter Rectangle (4 edges)
-  addCable(rTL, rTR, 'perimeter-frame', `Rear Top Rail (TC ${rTL} ➔ TC ${rTR})`, 'Upper horizontal boundary wire across rear wall');
-  addCable(rTR, rBR, 'perimeter-frame', `Rear Right Post (TC ${rTR} ➔ TC ${rBR})`, 'Right vertical boundary wire on rear face');
-  addCable(rBR, rBL, 'perimeter-frame', `Rear Bottom Rail (TC ${rBR} ➔ TC ${rBL})`, 'Lower horizontal boundary wire across rear floor');
-  addCable(rBL, rTL, 'perimeter-frame', `Rear Left Post (TC ${rBL} ➔ TC ${rTL})`, 'Left vertical boundary wire on rear face');
+  // Rear Face
+  addCable(rTL.channelNumber, rTR.channelNumber, 'perimeter-frame', 'Rear Top Rail', 'Structural frame');
+  addCable(rTR.channelNumber, rBR.channelNumber, 'perimeter-frame', 'Rear Right Post', 'Structural frame');
+  addCable(rBR.channelNumber, rBL.channelNumber, 'perimeter-frame', 'Rear Bottom Rail', 'Structural frame');
+  addCable(rBL.channelNumber, rTL.channelNumber, 'perimeter-frame', 'Rear Left Post', 'Structural frame');
 
-  // 4 Longitudinal Depth Rails (Front Corners directly to Rear Corners)
-  addCable(fTL, rTL, 'depth-rail', `Top Left Depth Rail (TC ${fTL} ➔ TC ${rTL})`, 'Longitudinal depth wire connecting upper-left corners');
-  addCable(fTR, rTR, 'depth-rail', `Top Right Depth Rail (TC ${fTR} ➔ TC ${rTR})`, 'Longitudinal depth wire connecting upper-right corners');
-  addCable(fBR, rBR, 'depth-rail', `Bottom Right Depth Rail (TC ${fBR} ➔ TC ${rBR})`, 'Longitudinal depth wire connecting lower-right corners');
-  addCable(fBL, rBL, 'depth-rail', `Bottom Left Depth Rail (TC ${fBL} ➔ TC ${rBL})`, 'Longitudinal depth wire connecting lower-left corners');
+  // Depth Rails
+  addCable(fTL.channelNumber, rTL.channelNumber, 'depth-rail', 'Top Left Depth Rail', 'Structural frame');
+  addCable(fTR.channelNumber, rTR.channelNumber, 'depth-rail', 'Top Right Depth Rail', 'Structural frame');
+  addCable(fBR.channelNumber, rBR.channelNumber, 'depth-rail', 'Bottom Right Depth Rail', 'Structural frame');
+  addCable(fBL.channelNumber, rBL.channelNumber, 'depth-rail', 'Bottom Left Depth Rail', 'Structural frame');
 
   // -----------------------------------------------------------
-  // STEP 3: FACE STABILIZER BRACES & SENSOR ATTACHMENT STRUTS
+  // STEP 3: FACE CROSS-HAIRS & MID-PLANE GRIDS
   // -----------------------------------------------------------
-  if (is21Point) {
-    // Front face intermediate points
-    addCable(fTL, 10, 'face-brace', 'Front Left Upper Mid Brace (TC 1 ➔ TC 10)', 'Diagonal strut supporting Front Left Mid sensor');
-    addCable(10, fBL, 'face-brace', 'Front Left Lower Mid Brace (TC 10 ➔ TC 4)', 'Diagonal strut supporting Front Left Mid sensor');
-    addCable(fBL, 16, 'face-brace', 'Front Bottom Left Brace (TC 4 ➔ TC 16)', 'Bottom truss supporting Front Floor Mid sensor');
-    addCable(16, fBR, 'face-brace', 'Front Bottom Right Brace (TC 16 ➔ TC 3)', 'Bottom truss supporting Front Floor Mid sensor');
+  // Identify face midpoints and edge midpoints
+  const mids = {
+    fT: findClosest(xMin, yMax, zMid),
+    fB: findClosest(xMin, yMin, zMid),
+    fL: findClosest(xMin, yMid, zMin),
+    fR: findClosest(xMin, yMid, zMax),
+    rT: findClosest(xMax, yMax, zMid),
+    rB: findClosest(xMax, yMin, zMid),
+    rL: findClosest(xMax, yMid, zMin),
+    rR: findClosest(xMax, yMid, zMax),
+    tL: findClosest(xMid, yMax, zMin),
+    tR: findClosest(xMid, yMax, zMax),
+    tF: findClosest(xMin, yMax, zMid), // Same as fT
+    tBa: findClosest(xMax, yMax, zMid), // Same as rT
+    bL: findClosest(xMid, yMin, zMin),
+    bR: findClosest(xMid, yMin, zMax),
+    bF: findClosest(xMin, yMin, zMid), // Same as fB
+    bBa: findClosest(xMax, yMin, zMid), // Same as rB
+  };
 
-    // Rear face intermediate points
-    addCable(rTL, 9, 'face-brace', 'Rear Left Upper Mid Brace (TC 17 ➔ TC 9)', 'Rear vertical truss supporting Rear Left sensor');
-    addCable(9, rBL, 'face-brace', 'Rear Left Lower Mid Brace (TC 9 ➔ TC 20)', 'Rear vertical truss supporting Rear Left sensor');
+  const faceCenters = {
+    front: findClosest(xMin, yMid, zMid),
+    rear: findClosest(xMax, yMid, zMid),
+    top: findClosest(xMid, yMax, zMid),
+    bottom: findClosest(xMid, yMin, zMid),
+    left: findClosest(xMid, yMid, zMin),
+    right: findClosest(xMid, yMid, zMax),
+  };
 
-    // Side & Top intermediate points
-    addCable(fTR, 14, 'face-brace', 'Right Wall Upper Front Brace (TC 2 ➔ TC 14)', 'Right side wall diagonal truss');
-    addCable(14, rTR, 'face-brace', 'Right Wall Upper Rear Brace (TC 14 ➔ TC 18)', 'Right side wall diagonal truss');
-    addCable(fBR, 15, 'face-brace', 'Right Wall Lower Front Brace (TC 3 ➔ TC 15)', 'Right side wall lower truss');
-    addCable(15, rBR, 'face-brace', 'Right Wall Lower Rear Brace (TC 15 ➔ TC 19)', 'Right side wall lower truss');
+  // Add face crosses (Edge-to-Edge through Face Center if exists)
+  const addFaceCross = (numA: number, numB: number, numCenter: number, title: string) => {
+    if (numCenter && numCenter !== numA && numCenter !== numB) {
+      addCable(numA, numCenter, 'face-cross', `${title} (Part A)`, 'Face stability grid');
+      addCable(numCenter, numB, 'face-cross', `${title} (Part B)`, 'Face stability grid');
+    } else {
+      addCable(numA, numB, 'face-cross', title, 'Face stability grid');
+    }
+  };
 
-    addCable(fTL, 13, 'face-brace', 'Top Roof Front Mid Brace (TC 1 ➔ TC 13)', 'Ceiling longitudinal stabilizer truss');
-    addCable(13, rTL, 'face-brace', 'Top Roof Rear Mid Brace (TC 13 ➔ TC 17)', 'Ceiling longitudinal stabilizer truss');
+  // Front Face Cross
+  addFaceCross(mids.fT.channelNumber, mids.fB.channelNumber, faceCenters.front.channelNumber, 'Front Vertical Cross');
+  addFaceCross(mids.fL.channelNumber, mids.fR.channelNumber, faceCenters.front.channelNumber, 'Front Horizontal Cross');
+  
+  // Rear Face Cross
+  addFaceCross(mids.rT.channelNumber, mids.rB.channelNumber, faceCenters.rear.channelNumber, 'Rear Vertical Cross');
+  addFaceCross(mids.rL.channelNumber, mids.rR.channelNumber, faceCenters.rear.channelNumber, 'Rear Horizontal Cross');
 
-    // Remaining intermediate points connected to center hub
-    [5, 6, 7, 8, 12, 21].forEach((ptNum) => {
-      addCable(centerNum, ptNum, 'face-brace', `Radial Sensor Lead (Center TC ${centerNum} ➔ TC ${ptNum})`, `Tensioned drop wire supporting TC ${ptNum}`);
-    });
+  // Top Face Cross
+  addFaceCross(mids.tL.channelNumber, mids.tR.channelNumber, faceCenters.top.channelNumber, 'Top Transverse Cross');
+  
+  // Bottom Face Cross
+  addFaceCross(mids.bL.channelNumber, mids.bR.channelNumber, faceCenters.bottom.channelNumber, 'Bottom Transverse Cross');
+
+  // Add Mid-Plane Crosses (Face Center to Opposite Face Center through Hub)
+  if (hubSensor) {
+    const h = hubSensor.channelNumber;
+    // Floor-to-Ceiling Plane
+    addCable(faceCenters.bottom.channelNumber, h, 'mid-plane', 'Y-Axis Plane (Bottom to Hub)', 'Internal volumetric grid');
+    addCable(h, faceCenters.top.channelNumber, 'mid-plane', 'Y-Axis Plane (Hub to Top)', 'Internal volumetric grid');
+    
+    // Left-to-Right Plane
+    addCable(faceCenters.left.channelNumber, h, 'mid-plane', 'Z-Axis Plane (Left to Hub)', 'Internal volumetric grid');
+    addCable(h, faceCenters.right.channelNumber, 'mid-plane', 'Z-Axis Plane (Hub to Right)', 'Internal volumetric grid');
+    
+    // Front-to-Rear Plane
+    addCable(faceCenters.front.channelNumber, h, 'mid-plane', 'X-Axis Plane (Front to Hub)', 'Internal volumetric grid');
+    addCable(h, faceCenters.rear.channelNumber, 'mid-plane', 'X-Axis Plane (Hub to Rear)', 'Internal volumetric grid');
+
+    // Internal Longitudinal Stabilizers (Depth rails for face centers)
+    addCable(mids.fT.channelNumber, mids.rT.channelNumber, 'depth-rail', 'Top Center Depth Rail', 'Internal volumetric stabilizer');
+    addCable(mids.fB.channelNumber, mids.rB.channelNumber, 'depth-rail', 'Bottom Center Depth Rail', 'Internal volumetric stabilizer');
+    addCable(mids.fL.channelNumber, mids.rL.channelNumber, 'depth-rail', 'Left Center Depth Rail', 'Internal volumetric stabilizer');
+    addCable(mids.fR.channelNumber, mids.rR.channelNumber, 'depth-rail', 'Right Center Depth Rail', 'Internal volumetric stabilizer');
   } else {
-    // 13 / 14 / Universal pattern
-    // Connect face centers (Top 10, Bottom 11, Left 12, Right 13, Front 14) to center hub and boundary rails
-    if (map.has(10)) {
-      addCable(centerNum, 10, 'face-brace', `Top Face Center Drop (Center TC ${centerNum} ➔ TC 10)`, 'Vertical riser to Top Face Center sensor');
-      addCable(10, fTL, 'face-brace', 'Top Face Diagonal A (TC 10 ➔ Front Top Left)', 'Stabilizer tie to front top left');
-      addCable(10, rTR, 'face-brace', 'Top Face Diagonal B (TC 10 ➔ Rear Top Right)', 'Stabilizer tie to rear top right');
-    }
-    if (map.has(11)) {
-      addCable(centerNum, 11, 'face-brace', `Bottom Face Center Drop (Center TC ${centerNum} ➔ TC 11)`, 'Vertical dropper to Hearth Floor Center sensor');
-      addCable(11, fBL, 'face-brace', 'Bottom Face Diagonal A (TC 11 ➔ Front Bottom Left)', 'Stabilizer tie to front bottom left');
-      addCable(11, rBR, 'face-brace', 'Bottom Face Diagonal B (TC 11 ➔ Rear Bottom Right)', 'Stabilizer tie to rear bottom right');
-    }
-    if (map.has(12)) {
-      addCable(centerNum, 12, 'face-brace', `Left Face Center Lead (Center TC ${centerNum} ➔ TC 12)`, 'Horizontal strut to Left Face Center sensor');
-      addCable(12, fTL, 'face-brace', 'Left Face Diagonal A (TC 12 ➔ Front Top Left)', 'Stabilizer tie to front top left');
-      addCable(12, rBL, 'face-brace', 'Left Face Diagonal B (TC 12 ➔ Rear Bottom Left)', 'Stabilizer tie to rear bottom left');
-    }
-    if (map.has(13)) {
-      addCable(centerNum, 13, 'face-brace', `Right Face Center Lead (Center TC ${centerNum} ➔ TC 13)`, 'Horizontal strut to Right Face Center sensor');
-      addCable(13, fTR, 'face-brace', 'Right Face Diagonal A (TC 13 ➔ Front Top Right)', 'Stabilizer tie to front top right');
-      addCable(13, rBR, 'face-brace', 'Right Face Diagonal B (TC 13 ➔ Rear Bottom Right)', 'Stabilizer tie to rear bottom right');
-    }
-    if (map.has(14)) {
-      addCable(centerNum, 14, 'face-brace', `Front Face Center Lead (Center TC ${centerNum} ➔ TC 14)`, 'Longitudinal strut to Front Face Center sensor');
-    }
+    addCable(faceCenters.bottom.channelNumber, faceCenters.top.channelNumber, 'mid-plane', 'Y-Axis Plane', 'Internal volumetric grid');
+    addCable(faceCenters.left.channelNumber, faceCenters.right.channelNumber, 'mid-plane', 'Z-Axis Plane', 'Internal volumetric grid');
+    addCable(faceCenters.front.channelNumber, faceCenters.rear.channelNumber, 'mid-plane', 'X-Axis Plane', 'Internal volumetric grid');
+  }
+
+  // -----------------------------------------------------------
+  // STEP 4: TETHER ALL OTHER SENSORS TO HUB
+  // Ensures any extra sensors are logically tied into the spider web
+  // -----------------------------------------------------------
+  const coreIds = new Set<number>();
+  if (hubSensor) coreIds.add(hubSensor.channelNumber);
+  Object.values(corners).forEach(c => coreIds.add(c.channelNumber));
+  Object.values(mids).forEach(c => coreIds.add(c.channelNumber));
+  Object.values(faceCenters).forEach(c => coreIds.add(c.channelNumber));
+
+  if (hubSensor) {
+    channels.forEach(ch => {
+      if (!coreIds.has(ch.channelNumber)) {
+        addCable(ch.channelNumber, centerNum, 'face-brace', `Radial Lead (TC ${ch.channelNumber} ➔ Hub)`, 'Logical center-tethered rigging');
+      }
+    });
   }
 
   return {
@@ -649,10 +693,40 @@ export function getLogicalWireRiggingSchedule(
 }
 
 /**
+ * Distributes sensors in a balanced, symmetrical pattern based on current count.
+ * Snaps to corners, face centers, edge centers, and hub.
+ */
+export function balanceSensors(
+  channels: ThermocoupleChannel[],
+  chamber: FurnaceChamber,
+  qwz: QualifiedWorkZone
+): ThermocoupleChannel[] {
+  const count = channels.length;
+  // Use standard layouts if possible, otherwise distribute logically
+  const balanced = generateStandardAMS2750Sensors(chamber, qwz, count);
+  
+  // Maintain user-defined metadata (roll lots, etc) while updating positions
+  return channels.map((ch, idx) => {
+    const balancedPos = balanced[idx] || balanced[balanced.length - 1];
+    return {
+      ...ch,
+      x: balancedPos.x,
+      y: balancedPos.y,
+      z: balancedPos.z,
+      ux: balancedPos.ux,
+      uy: balancedPos.uy,
+      uz: balancedPos.uz,
+      ...computeSensorDistances(balancedPos.x, balancedPos.y, balancedPos.z, chamber),
+      label: balancedPos.label, // Update label to match standard position
+    };
+  });
+}
+
+/**
  * Returns array of [ThermocoupleChannel, ThermocoupleChannel] wire links for rendering
  */
-export function getWireGridConnections(channels: ThermocoupleChannel[]): Array<[ThermocoupleChannel, ThermocoupleChannel]> {
-  const plan = getLogicalWireRiggingSchedule(channels);
+export function getWireGridConnections(channels: ThermocoupleChannel[], qwz: QualifiedWorkZone): Array<[ThermocoupleChannel, ThermocoupleChannel]> {
+  const plan = getLogicalWireRiggingSchedule(channels, qwz);
   return plan.connections;
 }
 
@@ -689,7 +763,7 @@ export function evaluateSetpoint(
   channels: ThermocoupleChannel[],
   furnaceClass: FurnaceClass,
   tempUnit: TempUnit,
-  instrumentError: number = 0.0
+  instrumentCorrection: number = 0.0
 ): SetpointAnalysisResult {
   const tol = CLASS_TOLERANCES[furnaceClass][tempUnit];
   const minAllowed = setpoint.targetTemp - tol;
@@ -729,7 +803,7 @@ export function evaluateSetpoint(
   const channelResults = channels.map((ch) => {
     const raw = setpoint.readings[ch.id] ?? setpoint.targetTemp;
     const tcCorr = ch.correctionFactors[setpoint.id] ?? 0;
-    const corrected = Math.round((raw + tcCorr + instrumentError) * 10) / 10;
+    const corrected = Math.round((raw + tcCorr + instrumentCorrection) * 10) / 10;
     const delta = Math.round((corrected - setpoint.targetTemp) * 10) / 10;
     const inTolerance = ch.failed ? true : (corrected >= minAllowed && corrected <= maxAllowed);
 

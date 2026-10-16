@@ -669,7 +669,33 @@ export const TestEquipmentManager: React.FC<TestEquipmentManagerProps> = ({
 
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">
-              Maximum Permissible Error (MPE) in {tempUnit}
+              Field Instrument Calibration Correction ({tempUnit})
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                step="0.01"
+                value={instrument.instrumentCorrection ?? 0.0}
+                onChange={(e) =>
+                  onUpdateInstrument({
+                    ...instrument,
+                    instrumentCorrection: parseFloat(e.target.value) || 0,
+                  })
+                }
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
+              />
+              <span className="absolute right-3 top-2 text-xs text-slate-500 font-mono">
+                {tempUnit}
+              </span>
+            </div>
+            <p className="text-[9px] text-slate-500 mt-1">
+              AMS 2750 Rev H: Correction value applied to all raw survey readings.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              Maximum Permissible Error (MPE) Limit
             </label>
             <div className="relative">
               <input
@@ -689,6 +715,9 @@ export const TestEquipmentManager: React.FC<TestEquipmentManagerProps> = ({
                 ± {tempUnit}
               </span>
             </div>
+            <p className="text-[9px] text-slate-500 mt-1">
+              Compliance limit: ±{mpeLimit}{tempUnit} (AMS 2750 Table 7).
+            </p>
           </div>
 
           <div>
@@ -900,6 +929,19 @@ export const TestEquipmentManager: React.FC<TestEquipmentManagerProps> = ({
                   value={sec.calibrationDueDate}
                   onChange={(e) => handleUpdateSecondary(sec.id, 'calibrationDueDate', e.target.value)}
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 font-mono focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                  Calibration Lab & Standard Reference
+                </label>
+                <input
+                  type="text"
+                  value={sec.calibrationLab || ''}
+                  onChange={(e) => handleUpdateSecondary(sec.id, 'calibrationLab', e.target.value)}
+                  placeholder="e.g. UKAS / ISO 17025"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:border-amber-500 focus:outline-none"
                 />
               </div>
 

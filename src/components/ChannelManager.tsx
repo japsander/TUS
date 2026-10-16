@@ -21,7 +21,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { generateStandardAMS2750Sensors, computeSensorDistances } from '../utils/ams2750';
+import { generateStandardAMS2750Sensors, computeSensorDistances, balanceSensors } from '../utils/ams2750';
 
 interface ChannelManagerProps {
   channels: ThermocoupleChannel[];
@@ -250,13 +250,27 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
           </button>
 
           {/* Add Channel Button */}
-          <button
-            onClick={handleAddChannel}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Channel</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const balanced = balanceSensors(channels, chamber, qwz);
+                onUpdateChannels(balanced);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-400 text-xs font-semibold shadow-sm transition-all cursor-pointer"
+              title="Automatically snap all sensors to logical, symmetrical grid positions (Corners, Face Centers, Hub)"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Auto-Balance Layout</span>
+            </button>
+
+            <button
+              onClick={handleAddChannel}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Channel</span>
+            </button>
+          </div>
         </div>
       </div>
 

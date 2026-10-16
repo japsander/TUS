@@ -143,10 +143,10 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
   // Top is viewed from above.
   const project3Dto2D = useCallback(
     (x: number, y: number, z: number) => {
-      // Centered 3D coordinates based on actual furnace envelope:
-      const midX = Math.max(chamber.length, qwz.offsetFront + qwz.length) / 2;
-      const midY = Math.max(chamber.height, qwz.offsetFloor + qwz.height) / 2;
-      const midZ = Math.max(chamber.width, qwz.offsetLeft + qwz.width) / 2;
+      // Centered 3D coordinates based on furnace chamber center:
+      const midX = chamber.length / 2;
+      const midY = chamber.height / 2;
+      const midZ = chamber.width / 2;
 
       const cx = x - midX;
       const cy = y - midY;
@@ -245,8 +245,8 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
 
   // 4. Physical Wire Grid Connections (Logical Opposite-Corner Diagonals & Perimeter)
   const wireRiggingPlan = useMemo(() => {
-    return getLogicalWireRiggingSchedule(channels, dimUnit);
-  }, [channels, dimUnit]);
+    return getLogicalWireRiggingSchedule(channels, qwz, dimUnit);
+  }, [channels, qwz, dimUnit]);
 
   const wireConnections = useMemo(() => {
     return wireRiggingPlan.cables.map((cable) => {
@@ -744,22 +744,22 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
               {wireConnections.map((wire) => {
                 const is3DDiag = wire.category === '3d-diagonal';
                 const isFrame = wire.category === 'perimeter-frame' || wire.category === 'depth-rail';
+                const isCross = wire.category === 'face-cross';
+                const isPlane = wire.category === 'mid-plane';
 
-                // 3D opposite-corner tension diagonals have prominent technical blue styling
+                // Categorical styling for high-density rigging symmetry
                 const strokeColor = is3DDiag
-                  ? isWhiteTheme
-                    ? '#2563EB'
-                    : '#38BDF8'
+                  ? isWhiteTheme ? '#2563EB' : '#38BDF8'
                   : isFrame
-                  ? isWhiteTheme
-                    ? '#475569'
-                    : '#94A3B8'
-                  : isWhiteTheme
-                  ? '#94A3B8'
-                  : '#64748B';
+                  ? isWhiteTheme ? '#475569' : '#94A3B8'
+                  : isCross
+                  ? isWhiteTheme ? '#10B981' : '#34D399' // Emerald for face crosses
+                  : isPlane
+                  ? isWhiteTheme ? '#D97706' : '#F59E0B' // Amber for internal planes
+                  : isWhiteTheme ? '#94A3B8' : '#64748B';
 
-                const strokeWidth = is3DDiag ? 2.4 : isFrame ? 1.8 : 1.2;
-                const strokeDash = is3DDiag ? 'none' : isFrame ? 'none' : '4,3';
+                const strokeWidth = is3DDiag ? 2.4 : isFrame ? 1.8 : isCross || isPlane ? 1.5 : 1.2;
+                const strokeDash = isPlane ? '4,4' : isFrame || is3DDiag || isCross ? 'none' : '2,2';
 
                 return (
                   <g key={wire.id}>

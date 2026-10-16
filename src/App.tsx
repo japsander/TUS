@@ -30,6 +30,7 @@ import {
   evaluateSetpoint,
   rescaleChannelsToQWZ,
   computeSensorDistances,
+  balanceSensors,
 } from './utils/ams2750';
 import { TechnicalSchematic2D } from './components/TechnicalSchematic2D';
 import { DimensionInputs, ChamberPreset } from './components/DimensionInputs';
@@ -383,6 +384,7 @@ export default function App() {
     { id: 'drop-1800', name: 'Drop-Bottom Solution Pit (1800×1200×1500 mm)', chamber: { length: 1800, width: 1200, height: 1500, shape: 'rectangular', feedthroughWall: 'roof', feedthroughPos: { x: 900, y: 1500, z: 600 } }, qwz: { length: 1400, width: 900, height: 1100, offsetLeft: 150, offsetRight: 150, offsetFront: 200, offsetRear: 200, offsetFloor: 180, offsetCeiling: 220 } },
     { id: 'vac-900', name: 'Vacuum Hot Zone (900×900×1200 mm)', chamber: { length: 900, width: 900, height: 1200, shape: 'rectangular', feedthroughWall: 'rear', feedthroughPos: { x: 900, y: 900, z: 450 } }, qwz: { length: 600, width: 600, height: 900, offsetLeft: 150, offsetRight: 150, offsetFront: 150, offsetRear: 150, offsetFloor: 150, offsetCeiling: 150 } },
     { id: 'car-3000', name: 'Large Aerospace Car-Bottom (3000×1800×1800 mm)', chamber: { length: 3000, width: 1800, height: 1800, shape: 'rectangular', feedthroughWall: 'left', feedthroughPos: { x: 1500, y: 1200, z: 0 } }, qwz: { length: 2400, width: 1400, height: 1300, offsetLeft: 200, offsetRight: 200, offsetFront: 300, offsetRear: 300, offsetFloor: 250, offsetCeiling: 250 } },
+    { id: 'dense-36', name: 'High-Density 36-Sensor Grid (4m³ Heavy Aerospace)', chamber: { length: 4000, width: 4000, height: 3000, shape: 'rectangular', feedthroughWall: 'rear', feedthroughPos: { x: 4000, y: 2200, z: 2000 } }, qwz: { length: 3200, width: 3200, height: 2400, offsetLeft: 400, offsetRight: 400, offsetFront: 400, offsetRear: 400, offsetFloor: 300, offsetCeiling: 300 } },
     { id: 'lab-600', name: 'Compact Laboratory Retort (600×500×500 mm)', chamber: { length: 600, width: 500, height: 500, shape: 'rectangular', feedthroughWall: 'rear', feedthroughPos: { x: 600, y: 350, z: 250 } }, qwz: { length: 450, width: 350, height: 350, offsetLeft: 75, offsetRight: 75, offsetFront: 75, offsetRear: 75, offsetFloor: 60, offsetCeiling: 90 } },
   ];
 
@@ -447,6 +449,9 @@ export default function App() {
     } else if (id === 'car-3000') {
       newChamber = { length: 3000, width: 1800, height: 1800, shape: 'rectangular', feedthroughWall: 'left', feedthroughPos: { x: 1500, y: 1200, z: 0 } };
       newQWZ = { length: 2400, width: 1400, height: 1300, offsetLeft: 200, offsetRight: 200, offsetFront: 300, offsetRear: 300, offsetFloor: 250, offsetCeiling: 250 };
+    } else if (id === 'dense-36') {
+      newChamber = { length: 4000, width: 4000, height: 3000, shape: 'rectangular', feedthroughWall: 'rear', feedthroughPos: { x: 4000, y: 2200, z: 2000 } };
+      newQWZ = { length: 3200, width: 3200, height: 2400, offsetLeft: 400, offsetRight: 400, offsetFront: 400, offsetRear: 400, offsetFloor: 300, offsetCeiling: 300 };
     } else if (id === 'lab-600') {
       newChamber = { length: 600, width: 500, height: 500, shape: 'rectangular', feedthroughWall: 'rear', feedthroughPos: { x: 600, y: 350, z: 250 } };
       newQWZ = { length: 450, width: 350, height: 350, offsetLeft: 75, offsetRight: 75, offsetFront: 75, offsetRear: 75, offsetFloor: 60, offsetCeiling: 90 };
@@ -461,36 +466,18 @@ export default function App() {
     const volumeM3 = calculateVolumeInM3(newQWZ, dimUnit);
     const volumeCuFt = calculateVolumeInCuFt(newQWZ, dimUnit);
     const { minSensors } = getMinRequiredSensors(volumeCuFt, volumeM3);
-    const countToGenerate = id === 'pic1-1200' || id === 'custom-2500' || found ? 21 : Math.max(9, minSensors);
+    const countToGenerate = id === 'dense-36' ? 36 : (id === 'pic1-1200' || id === 'custom-2500' || found ? 21 : Math.max(9, minSensors));
     const newSensors = generateStandardAMS2750Sensors(newChamber, newQWZ, countToGenerate);
     setChannels(newSensors);
     if (newSensors[0]) setSelectedChannelId(newSensors[0].id);
   };
 
-  // Automatic scaling when QWZ changes so sensors and wire grid always fill the zone
+  // Update QWZ and rescale sensors to fill the new zone
   const handleUpdateQWZ = (newQWZ: QualifiedWorkZone) => {
-    // 1. Maintain furnace chamber enclosing the QWZ + clearances
-    const reqLength = newQWZ.offsetFront + newQWZ.length + newQWZ.offsetRear;
-    const reqWidth = newQWZ.offsetLeft + newQWZ.width + newQWZ.offsetRight;
-    const reqHeight = newQWZ.offsetFloor + newQWZ.height + newQWZ.offsetCeiling;
-
-    const nextChamber: FurnaceChamber = {
-      ...chamber,
-      length: Math.max(chamber.length, reqLength),
-      width: Math.max(chamber.width, reqWidth),
-      height: Math.max(chamber.height, reqHeight),
-      feedthroughPos: {
-        x: Math.max(chamber.length, reqLength),
-        y: Math.max(chamber.height, reqHeight) * 0.75,
-        z: Math.max(chamber.width, reqWidth) / 2,
-      },
-    };
-
     setQWZ(newQWZ);
-    setChamber(nextChamber);
 
-    // 2. Proportionally rescale all existing channels so the wire grid and thermocouples immediately fill the new QWZ!
-    const updatedChannels = rescaleChannelsToQWZ(channels, qwz, newQWZ, nextChamber);
+    // Proportionally rescale all existing channels so the wire grid and thermocouples immediately fill the new QWZ!
+    const updatedChannels = rescaleChannelsToQWZ(channels, qwz, newQWZ, chamber);
     setChannels(updatedChannels);
   };
 
@@ -507,6 +494,11 @@ export default function App() {
 
   // Re-generate standard sensor pattern to span the current QWZ boundaries
   const handleFitSensorsToQWZ = (count?: number) => {
+    if (count === -1) {
+      const balanced = balanceSensors(channels, chamber, qwz);
+      setChannels(balanced);
+      return;
+    }
     const targetCount = count || channels.length;
     const newSensors = generateStandardAMS2750Sensors(chamber, qwz, targetCount);
     setChannels(newSensors);
