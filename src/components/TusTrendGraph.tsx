@@ -11,13 +11,15 @@ import {
   ReferenceArea,
   ReferenceLine,
 } from 'recharts';
-import { TusTrendData, DetectedDwellPeriod, ThermocoupleChannel, TempUnit } from '../types/tus';
+import { TusTrendData, DetectedDwellPeriod, ThermocoupleChannel, TempUnit, FurnaceClass } from '../types/tus';
+import { CLASS_TOLERANCES } from '../utils/ams2750';
 
 interface TusTrendGraphProps {
   data: TusTrendData[];
   dwells: DetectedDwellPeriod[];
   channels: ThermocoupleChannel[];
   tempUnit: TempUnit;
+  furnaceClass: FurnaceClass;
   isZoomed?: boolean;
   showLegend?: boolean;
 }
@@ -32,6 +34,7 @@ export const TusTrendGraph: React.FC<TusTrendGraphProps> = ({
   dwells,
   channels,
   tempUnit,
+  furnaceClass,
   isZoomed = false,
   showLegend = true,
 }) => {
@@ -50,14 +53,22 @@ export const TusTrendGraph: React.FC<TusTrendGraphProps> = ({
   return (
     <div id={isZoomed ? undefined : "tus-trend-graph-container"} className={`w-full ${isZoomed ? 'h-[300px]' : 'h-[400px]'} bg-slate-900/40 p-4 rounded-xl border border-slate-800 shadow-inner`}>
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 20, right: 30, left: 0, bottom: isZoomed ? 10 : 20 }}>
+        <LineChart data={data} margin={{ top: 40, right: 30, left: 0, bottom: isZoomed ? 10 : 20 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
           <XAxis 
-            dataKey="timeStr" 
+            dataKey="timestampSec" 
+            type="number"
+            domain={['dataMin', 'dataMax']}
+            tickFormatter={(val) => {
+              const norm = ((val % 86400) + 86400) % 86400;
+              const h = Math.floor(norm / 3600);
+              const m = Math.floor((norm % 3600) / 60);
+              return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            }}
             stroke="#94a3b8" 
             fontSize={10}
             tick={{ fill: '#94a3b8' }}
-            minTickGap={isZoomed ? 20 : 50}
+            minTickGap={50}
           />
           <YAxis 
             stroke="#94a3b8" 
@@ -69,57 +80,68 @@ export const TusTrendGraph: React.FC<TusTrendGraphProps> = ({
           <Tooltip 
             contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: '11px' }}
             itemStyle={{ padding: '0px' }}
+            labelFormatter={(val) => {
+              const norm = ((val % 86400) + 86400) % 86400;
+              const h = Math.floor(norm / 3600);
+              const m = Math.floor((norm % 3600) / 60);
+              return `Time: ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            }}
           />
           {showLegend && <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />}
           
           {/* Highlight Dwell Periods & 30-min Evaluation Windows */}
           {dwells.map((dwell, idx) => {
-            const startT = dwell.startTimeStr || data[dwell.startIndex]?.timeStr || '';
-            const endT = dwell.endTimeStr || data[dwell.endIndex]?.timeStr || '';
+            // Background Dwell (Dashed)
+            const startSec = dwell.startTimeSec;
+            const endSec = dwell.endTimeSec;
             
-            const evalStartT = (dwell.evalStartIndex !== undefined) ? data[dwell.evalStartIndex]?.timeStr : null;
-            const evalEndT = (dwell.evalEndIndex !== undefined) ? data[dwell.evalEndIndex]?.timeStr : null;
+            // Evaluation Window (Highlighted Block)
+            // Use evalStartTimeSec if available, fallback to startSec for robustness
+            const evalStartSec = dwell.evalStartTimeSec ?? dwell.startTimeSec;
+            const evalEndSec = dwell.evalEndTimeSec ?? dwell.endTimeSec;
+
+            // Specific 30-min Evaluation Window (Requested Highlight Block)
+            const tolerance = CLASS_TOLERANCES[furnaceClass][tempUnit];
+            const y1 = dwell.targetTemp - tolerance;
+            const y2 = dwell.targetTemp + tolerance;
 
             return (
               <React.Fragment key={`dwell-group-${idx}`}>
-                {/* Background Dwell Area */}
+                {/* Background Full Dwell Area */}
                 {!isZoomed && (
                   <ReferenceArea
-                    x1={startT}
-                    x2={endT}
+                    x1={startSec}
+                    x2={endSec}
                     stroke="#334155"
                     strokeWidth={1}
                     strokeDasharray="3 3"
                     strokeOpacity={0.4}
                     fill="#1e293b"
                     fillOpacity={0.1}
+                    isAnimationActive={false}
                   />
                 )}
                 
-                {/* Specific 30-min Evaluation Window (Requested Highlight) */}
-                {evalStartT && evalEndT && (
-                  <>
-                    <ReferenceArea
-                      x1={evalStartT}
-                      x2={evalEndT}
-                      stroke="#10b981"
-                      strokeWidth={2}
-                      fill="#10b981"
-                      fillOpacity={0.35} // Increased opacity
-                      label={{
-                        position: 'insideTop',
-                        value: isZoomed ? `30-Min Capture (${dwell.targetTemp}${tempUnit})` : `Capture Window (${dwell.targetTemp}${tempUnit})`,
-                        fill: '#10b981',
-                        fontSize: 10,
-                        fontWeight: 'bold',
-                        offset: 15
-                      }}
-                    />
-                    {/* Visual markers for start/end */}
-                    <ReferenceLine x={evalStartT} stroke="#10b981" strokeDasharray="3 3" strokeWidth={1} label={{ position: 'left', value: 'Start', fill: '#059669', fontSize: 8 }} />
-                    <ReferenceLine x={evalEndT} stroke="#10b981" strokeDasharray="3 3" strokeWidth={1} label={{ position: 'right', value: 'End', fill: '#059669', fontSize: 8 }} />
-                  </>
-                )}
+                {/* Specific 30-min Evaluation Window (Requested Highlight Block) */}
+                <ReferenceArea
+                  x1={evalStartSec}
+                  x2={evalEndSec}
+                  y1={y1}
+                  y2={y2}
+                  stroke="#a3e635"
+                  strokeWidth={2}
+                  fill="#a3e635"
+                  fillOpacity={0.35}
+                  isAnimationActive={false}
+                  label={{
+                    position: 'top',
+                    value: `SETPOINT EVALUATION: ${dwell.targetTemp}${tempUnit} (±${tolerance})`,
+                    fill: '#a3e635',
+                    fontSize: 10,
+                    fontWeight: 'bold',
+                    offset: 10
+                  }}
+                />
               </React.Fragment>
             );
           })}
@@ -135,7 +157,7 @@ export const TusTrendGraph: React.FC<TusTrendGraphProps> = ({
               dot={false}
               strokeWidth={1.5}
               activeDot={{ r: 4 }}
-              isAnimationActive={false} // Important for reliable html-to-image capture
+              isAnimationActive={false}
             />
           ))}
         </LineChart>

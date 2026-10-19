@@ -278,13 +278,7 @@ export default function App() {
     calibrationLab: '',
   });
 
-  // Corrective Actions State for Failed TUS Surveys
-  const [correctiveActions, setCorrectiveActions] = useState({
-    rootCause: '',
-    actionTaken: '',
-    retestPlan: '',
-    status: 'Pending Retest Verification',
-  });
+
 
   // Nadcap AC7102/8 Audit Checklist
   const [checklist, setChecklist] = useState<NadcapCheckItem[]>([
@@ -542,7 +536,7 @@ export default function App() {
   const { minSensors } = getMinRequiredSensors(volumeCuFt, volumeM3);
   const tolerance = CLASS_TOLERANCES[meta.furnaceClass][tempUnit];
   const setpointAnalyses = setpoints.map((sp) =>
-    evaluateSetpoint(sp, channels, meta.furnaceClass, tempUnit, instrument.maxPermissibleError)
+    evaluateSetpoint(sp, channels, meta.furnaceClass, tempUnit, instrument.instrumentCorrection ?? 0)
   );
   const isOverallConformant = checklist.every((item) => item.compliant);
 
@@ -1090,7 +1084,7 @@ export default function App() {
                   channels={channels}
                   furnaceClass={meta.furnaceClass}
                   tempUnit={tempUnit}
-                  instrumentError={instrument.maxPermissibleError}
+                  instrumentCorrection={instrument.instrumentCorrection ?? 0}
                   meta={meta}
                   onUpdateSetpoints={setSetpoints}
                   onUpdateChannels={setChannels}
@@ -1148,8 +1142,7 @@ export default function App() {
         diagramImageBase64={diagramImageBase64}
         trendData={trendData}
         dwellPeriods={dwellPeriods}
-        correctiveActions={correctiveActions}
-        onUpdateCorrectiveActions={setCorrectiveActions}
+
       />
     </div>
   );

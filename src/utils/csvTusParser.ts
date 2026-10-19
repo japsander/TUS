@@ -16,11 +16,21 @@ export interface CsvColumnMapping {
 
 export interface DetectedDwell {
   targetTemp: number;
-  startIndex: number;
-  endIndex: number;
-  startTimeStr: string;
-  endTimeStr: string;
-  durationMinutes: number;
+  
+  // Full contiguous block where sensors were in-band
+  fullStartTimeStr: string;
+  fullEndTimeStr: string;
+  fullDurationMinutes: number;
+  fullStartIndex: number;
+  fullEndIndex: number;
+
+  // Most stable 30-min window within that block (evaluation window)
+  evalStartTimeStr: string;
+  evalEndTimeStr: string;
+  evalDurationMinutes: number;
+  evalStartIndex: number;
+  evalEndIndex: number;
+
   maxOvershoot: number;
   channelReadings: Record<string, number>; // channelId -> calculated steady reading
   channelMin: Record<string, number>;
@@ -28,6 +38,11 @@ export interface DetectedDwell {
   isDurationCompliant: boolean; // >= 30 min per AMS 2750
   isSpreadCompliant: boolean;   // within class tolerance
   tempSpread: number;
+
+  // Compatibility fields (map to eval window)
+  startTimeStr: string; 
+  endTimeStr: string;
+  durationMinutes: number;
 }
 
 export interface CsvParseResult {
@@ -47,14 +62,27 @@ export function parseTimestampToSeconds(val: string): number {
   if (!val) return 0;
   const clean = val.trim();
 
-  // Try ISO or standard Date
+  // 1. Try standard Date.parse (ISO, etc.)
   const dateParsed = Date.parse(clean);
   if (!isNaN(dateParsed)) {
     return Math.floor(dateParsed / 1000);
   }
 
-  // Try HH:MM:SS or HH:MM
-  const timeMatch = clean.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  // 2. Try DD/MM/YYYY HH:mm[:ss]
+  const dmyMatch = clean.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (dmyMatch) {
+    const d = parseInt(dmyMatch[1], 10);
+    const m = parseInt(dmyMatch[2], 10) - 1; // 0-indexed months
+    const y = parseInt(dmyMatch[3], 10);
+    const hh = parseInt(dmyMatch[4], 10);
+    const mm = parseInt(dmyMatch[5], 10);
+    const ss = dmyMatch[6] ? parseInt(dmyMatch[6], 10) : 0;
+    const date = new Date(y, m, d, hh, mm, ss);
+    if (!isNaN(date.getTime())) return Math.floor(date.getTime() / 1000);
+  }
+
+  // 3. Try HH:MM:SS or HH:MM (Time only fallback)
+  const timeMatch = clean.match(/(?:^|\s)(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s|$)/);
   if (timeMatch) {
     const hours = parseInt(timeMatch[1], 10);
     const mins = parseInt(timeMatch[2], 10);
@@ -62,7 +90,7 @@ export function parseTimestampToSeconds(val: string): number {
     return hours * 3600 + mins * 60 + secs;
   }
 
-  // Fallback to numeric seconds/milliseconds
+  // 4. Fallback to numeric seconds/milliseconds
   const num = parseFloat(clean);
   if (!isNaN(num)) {
     return num > 100000000000 ? Math.floor(num / 1000) : Math.floor(num);
@@ -126,6 +154,9 @@ export function parseTusCsv(
   // Parse data rows
   const parsedRows: ParsedCsvRow[] = [];
   const intervals: number[] = [];
+  
+  let dayOffsetSec = 0;
+  let lastRawSec = -1;
 
   for (let i = 1; i < lines.length; i++) {
     const parts = lines[i]
@@ -134,8 +165,19 @@ export function parseTusCsv(
     if (parts.length < rawHeaders.length * 0.5) continue; // skip corrupted line
 
     const timeRaw = parts[timeHeaderIndex] || '';
-    const timeSec = parseTimestampToSeconds(timeRaw);
-    const timeStr = formatSecondsToTime(timeSec);
+    let timeSec = parseTimestampToSeconds(timeRaw);
+
+    // Midnight Rollover Check (Only if we haven't successfully parsed a full date with year/month/day)
+    // If timeSec jumps backwards by more than 12 hours, assume next day.
+    if (lastRawSec !== -1) {
+      if (timeSec < lastRawSec - 43200) {
+        dayOffsetSec += 86400;
+      }
+    }
+    lastRawSec = timeSec;
+    const finalSec = timeSec + dayOffsetSec;
+
+    const timeStr = formatSecondsToTime(finalSec);
 
     const values: Record<string, number> = {};
     rawHeaders.forEach((h, colIdx) => {
@@ -150,7 +192,7 @@ export function parseTusCsv(
 
     if (parsedRows.length > 0) {
       const prevSec = parsedRows[parsedRows.length - 1].timestampSec;
-      const delta = timeSec - prevSec;
+      const delta = finalSec - prevSec;
       if (delta > 0 && delta <= 3600) {
         intervals.push(delta);
       }
@@ -158,7 +200,7 @@ export function parseTusCsv(
 
     parsedRows.push({
       timestampRaw: timeRaw,
-      timestampSec: timeSec,
+      timestampSec: finalSec,
       timeStr,
       values,
     });
@@ -320,28 +362,29 @@ function calculateDwellStats(
 ): DetectedDwell {
   const startRow = rows[bestStart];
   const endRow = rows[bestEnd];
-  const totalDurationMin = Math.round((endRow.timestampSec - startRow.timestampSec) / 60);
+  const totalDurationMin = (endRow.timestampSec - startRow.timestampSec) / 60;
 
   // 1. Find the Most Stable 30-Minute Consecutive Window
-  // AMS 2750 Rev H requires at least 30 minutes. 
-  // We search for the 30-min window within [bestStart, bestEnd] with the minimum average spread.
   let evalStart = bestStart;
   let evalEnd = bestEnd;
   let minWindowSpread = Infinity;
 
-  const windowSizeMin = 30;
-  const intervalSec = (rows.length > 1) ? rows[1].timestampSec - rows[0].timestampSec : 60;
-  const rowsInWindow = Math.floor((windowSizeMin * 60) / intervalSec);
+  const targetWindowSec = 30 * 60;
 
-  if (totalDurationMin > windowSizeMin) {
-    for (let i = bestStart; i <= bestEnd - rowsInWindow; i++) {
+  if (totalDurationMin * 60 >= targetWindowSec) {
+    for (let i = bestStart; i <= bestEnd; i++) {
+      let j = i;
+      while (j <= bestEnd && rows[j].timestampSec - rows[i].timestampSec < targetWindowSec) {
+        j++;
+      }
+      
+      if (j > bestEnd) break;
+
       let maxS = -Infinity;
       let minS = Infinity;
-      
-      // Calculate spread across all active channels in this sliding window
-      for (let j = i; j < i + rowsInWindow; j++) {
+      for (let k = i; k <= j; k++) {
         for (const map of activeMappings) {
-          const val = rows[j].values[map.csvHeader];
+          const val = rows[k].values[map.csvHeader];
           if (val !== undefined) {
             if (val > maxS) maxS = val;
             if (val < minS) minS = val;
@@ -353,14 +396,15 @@ function calculateDwellStats(
       if (currentSpread < minWindowSpread) {
         minWindowSpread = currentSpread;
         evalStart = i;
-        evalEnd = i + rowsInWindow - 1;
+        evalEnd = j;
       }
     }
   }
 
-  // Use the identified evaluation window for reporting readings
-  const reportStartRow = rows[evalStart];
-  const reportEndRow = rows[evalEnd];
+  // Window references
+  const evalStartRow = rows[evalStart];
+  const evalEndRow = rows[evalEnd];
+  const capturedDurationMin = Math.round((evalEndRow.timestampSec - evalStartRow.timestampSec) / 60);
 
   // Search for maximum overshoot including ramping up to this dwell (from prevEndIndex to bestEnd)
   let maxOvershoot = target;
@@ -384,7 +428,6 @@ function calculateDwellStats(
     let minV = Infinity;
     let maxV = -Infinity;
 
-    // Use the 30-min evaluation window for reported values
     for (let i = evalStart; i <= evalEnd; i++) {
       const val = rows[i].values[map.csvHeader];
       if (val !== undefined) {
@@ -408,16 +451,31 @@ function calculateDwellStats(
 
   return {
     targetTemp: target,
-    startIndex: evalStart,
-    endIndex: evalEnd,
-    startTimeStr: reportStartRow.timeStr,
-    endTimeStr: reportEndRow.timeStr,
-    durationMinutes: windowSizeMin, // Report the 30 min captured window
+
+    // Full Hold
+    fullStartTimeStr: startRow.timeStr,
+    fullEndTimeStr: endRow.timeStr,
+    fullDurationMinutes: Math.round(totalDurationMin),
+    fullStartIndex: bestStart,
+    fullEndIndex: bestEnd,
+
+    // Evaluation Window
+    evalStartTimeStr: evalStartRow.timeStr,
+    evalEndTimeStr: evalEndRow.timeStr,
+    evalDurationMinutes: capturedDurationMin,
+    evalStartIndex: evalStart,
+    evalEndIndex: evalEnd,
+
+    // Compatibility
+    startTimeStr: evalStartRow.timeStr,
+    endTimeStr: evalEndRow.timeStr,
+    durationMinutes: capturedDurationMin,
+
     maxOvershoot: Math.round(maxOvershoot * 10) / 10,
     channelReadings,
     channelMin,
     channelMax,
-    isDurationCompliant: totalDurationMin >= minDurationMinutes,
+    isDurationCompliant: (totalDurationMin * 60) >= (minDurationMinutes * 60 - 1),
     isSpreadCompliant: maxRead <= target + tolerance && minRead >= target - tolerance,
     tempSpread: spread,
   };
@@ -457,35 +515,16 @@ export function convertToDwellPeriods(
   rows: ParsedCsvRow[]
 ): DetectedDwellPeriod[] {
   return dwells.map((d) => {
-    // Determine the 30-min evaluation window (AMS 2750 Rev H requires at least 30 mins)
-    // We prefer the last 30 minutes of the stable period as it's typically the most stabilized.
-    const durationSec = rows[d.endIndex].timestampSec - rows[d.startIndex].timestampSec;
-    const durationMin = durationSec / 60;
-    
-    let evalStartIndex = d.startIndex;
-    let evalEndIndex = d.endIndex;
-
-    if (durationMin > 30) {
-      // Find the index that is 30 mins before the end
-      const targetTimeSec = rows[d.endIndex].timestampSec - (30 * 60);
-      for (let i = d.startIndex; i <= d.endIndex; i++) {
-        if (rows[i].timestampSec >= targetTimeSec) {
-          evalStartIndex = i;
-          break;
-        }
-      }
-    }
-
     return {
       targetTemp: d.targetTemp,
-      startIndex: d.startIndex,
-      endIndex: d.endIndex,
-      startTimeSec: rows[d.startIndex].timestampSec,
-      endTimeSec: rows[d.endIndex].timestampSec,
-      startTimeStr: rows[d.startIndex].timeStr,
-      endTimeStr: rows[d.endIndex].timeStr,
-      evalStartIndex,
-      evalEndIndex,
+      startIndex: d.fullStartIndex,
+      endIndex: d.fullEndIndex,
+      startTimeSec: rows[d.fullStartIndex].timestampSec,
+      endTimeSec: rows[d.fullEndIndex].timestampSec,
+      startTimeStr: d.fullStartTimeStr,
+      endTimeStr: d.fullEndTimeStr,
+      evalStartIndex: d.evalStartIndex,
+      evalEndIndex: d.evalEndIndex,
     };
   });
 }

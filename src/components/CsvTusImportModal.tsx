@@ -188,9 +188,12 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
       return {
         id: existingSp ? existingSp.id : `sp-csv-${Date.now()}-${idx}`,
         targetTemp: dwell.targetTemp,
-        soakDurationMinutes: dwell.durationMinutes,
-        soakStartTime: dwell.startTimeStr,
-        soakEndTime: dwell.endTimeStr,
+        soakDurationMinutes: dwell.evalDurationMinutes,
+        soakStartTime: dwell.evalStartTimeStr,
+        soakEndTime: dwell.evalEndTimeStr,
+        fullHoldStartTime: dwell.fullStartTimeStr,
+        fullHoldEndTime: dwell.fullEndTimeStr,
+        fullHoldDurationMinutes: dwell.fullDurationMinutes,
         maxOvershootObserved: dwell.maxOvershoot,
         readings: dwell.channelReadings,
       };
@@ -462,7 +465,7 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
 
                     <div className="space-y-1 font-mono text-[11px] text-slate-300 bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Soak Window:</span>
+                        <span className="text-slate-400">Captured Window:</span>
                         <strong className="text-cyan-300">
                           {dwell.startTimeStr} ➔ {dwell.endTimeStr}
                         </strong>
@@ -472,8 +475,8 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
                         <strong className="text-amber-400">{dwell.maxOvershoot} {tempUnit}</strong>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Temp Spread:</span>
-                        <strong className="text-emerald-400">{dwell.tempSpread} {tempUnit}</strong>
+                        <span className="text-slate-400">Evaluation Window:</span>
+                        <strong className="text-emerald-400">{dwell.durationMinutes} min</strong>
                       </div>
                       <div className="flex justify-between border-t border-slate-800 pt-1 text-[10px]">
                         <span className="text-slate-500">Channels Read:</span>

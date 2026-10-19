@@ -27,7 +27,7 @@ interface SurveyDataSectionProps {
   channels: ThermocoupleChannel[];
   furnaceClass: FurnaceClass;
   tempUnit: TempUnit;
-  instrumentError: number;
+  instrumentCorrection: number;
   meta: SurveyMetadata;
   onUpdateSetpoints: (setpoints: SurveySetpoint[]) => void;
   onUpdateChannels: (channels: ThermocoupleChannel[]) => void;
@@ -41,7 +41,7 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
   channels,
   furnaceClass,
   tempUnit,
-  instrumentError,
+  instrumentCorrection,
   meta,
   onUpdateSetpoints,
   onUpdateChannels,
@@ -132,7 +132,7 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
 
   const currentSetpoint = setpoints.find((s) => s.id === activeSetpointId) || setpoints[0];
   const analysis = currentSetpoint
-    ? evaluateSetpoint(currentSetpoint, channels, furnaceClass, tempUnit, instrumentError)
+    ? evaluateSetpoint(currentSetpoint, channels, furnaceClass, tempUnit, instrumentCorrection)
     : null;
 
   const handleApplyCsvImport = (
@@ -184,7 +184,7 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
       <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
           {setpoints.map((sp, idx) => {
-            const spAnalysis = evaluateSetpoint(sp, channels, furnaceClass, tempUnit, instrumentError);
+            const spAnalysis = evaluateSetpoint(sp, channels, furnaceClass, tempUnit, instrumentCorrection);
             const isActive = sp.id === activeSetpointId;
             return (
               <button
@@ -286,32 +286,48 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-medium text-slate-400 mb-1">
-                    Soak Start Time
-                  </label>
-                  <input
-                    type="time"
-                    value={currentSetpoint.soakStartTime}
-                    onChange={(e) =>
-                      handleUpdateSetpoint(currentSetpoint.id, { soakStartTime: e.target.value })
-                    }
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:border-cyan-500 focus:outline-none"
-                  />
+                {/* Full Stability Hold Info */}
+                <div className="col-span-2 bg-slate-950/40 border border-slate-800 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Stability Hold Period</span>
+                    <span className="text-[10px] font-mono text-cyan-400 font-bold">{currentSetpoint.fullHoldDurationMinutes || currentSetpoint.soakDurationMinutes} min</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] text-slate-500 mb-0.5">Hold Start</label>
+                      <div className="text-xs font-mono text-slate-200 bg-slate-900 border border-slate-800 px-2 py-1 rounded">
+                        {currentSetpoint.fullHoldStartTime || currentSetpoint.soakStartTime || '--:--'}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-500 mb-0.5">Hold End</label>
+                      <div className="text-xs font-mono text-slate-200 bg-slate-900 border border-slate-800 px-2 py-1 rounded">
+                        {currentSetpoint.fullHoldEndTime || currentSetpoint.soakEndTime || '--:--'}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-medium text-slate-400 mb-1">
-                    Soak End Time
-                  </label>
-                  <input
-                    type="time"
-                    value={currentSetpoint.soakEndTime}
-                    onChange={(e) =>
-                      handleUpdateSetpoint(currentSetpoint.id, { soakEndTime: e.target.value })
-                    }
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:border-cyan-500 focus:outline-none"
-                  />
+                {/* Audit Capture Window Info */}
+                <div className="col-span-2 bg-emerald-950/10 border border-emerald-900/30 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between border-b border-emerald-900/20 pb-1.5 mb-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Audit Capture Window (30 Min)</span>
+                    <span className="text-[10px] font-mono text-emerald-400 font-bold">{currentSetpoint.soakDurationMinutes} min</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] text-emerald-500/60 mb-0.5">Window Start</label>
+                      <div className="text-xs font-mono text-emerald-200 bg-slate-900 border border-emerald-900/40 px-2 py-1 rounded">
+                        {currentSetpoint.soakStartTime}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-emerald-500/60 mb-0.5">Window End</label>
+                      <div className="text-xs font-mono text-emerald-200 bg-slate-900 border border-emerald-900/40 px-2 py-1 rounded">
+                        {currentSetpoint.soakEndTime}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="col-span-2">
@@ -447,7 +463,7 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
               </div>
 
               <div className="text-xs text-slate-400 bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 leading-relaxed">
-                <span className="font-semibold text-slate-200">AMS 2750 Rev H Rule:</span> Corrected Temperature = Raw Reading + TC Correction Factor + Instrument Correction Error. Every survey channel must remain within [{analysis.minAllowed} {tempUnit}, {analysis.maxAllowed} {tempUnit}] throughout the verified soak interval.
+                <span className="font-semibold text-slate-200">AMS 2750 Rev H Rule:</span> Corrected Temperature = Raw Reading + TC Correction Factor + Instrument Calibration Correction. Note: Maximum Permissible Error (MPE) is used for instrument compliance validation only and is not applied to calculations. Every survey channel must remain within [{analysis.minAllowed} {tempUnit}, {analysis.maxAllowed} {tempUnit}] throughout the verified soak interval.
               </div>
             </div>
           </div>

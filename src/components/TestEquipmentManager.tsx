@@ -715,8 +715,8 @@ export const TestEquipmentManager: React.FC<TestEquipmentManagerProps> = ({
                 ± {tempUnit}
               </span>
             </div>
-            <p className="text-[9px] text-slate-500 mt-1">
-              Compliance limit: ±{mpeLimit}{tempUnit} (AMS 2750 Table 7).
+            <p className="text-[9px] text-slate-500 mt-1 italic">
+              Informational Only: Used for compliance check against AMS 2750 Table 7 (±{mpeLimit}{tempUnit}). Not used in corrected temp calculations.
             </p>
           </div>
 

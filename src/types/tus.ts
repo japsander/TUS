@@ -76,9 +76,13 @@ export interface ThermocoupleChannel {
 export interface SurveySetpoint {
   id: string;
   targetTemp: number;
-  soakDurationMinutes: number;
-  soakStartTime: string;
-  soakEndTime: string;
+  soakDurationMinutes: number; // Evaluation window duration (30 min)
+  soakStartTime: string;      // Evaluation window start
+  soakEndTime: string;        // Evaluation window end
+  
+  fullHoldStartTime?: string;  // Total stability hold start
+  fullHoldEndTime?: string;    // Total stability hold end
+  fullHoldDurationMinutes?: number; 
   maxOvershootObserved: number;
   // channelId -> raw temperature reading
   readings: Record<string, number>;
