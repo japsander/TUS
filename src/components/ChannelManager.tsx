@@ -293,6 +293,7 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                 <th className="py-3 px-1 text-center" title="Sensor Error Indicator">Err</th>
                 <th className="py-3 px-2 w-28 text-center text-cyan-400">Lot #</th>
                 <th className="py-3 px-2 w-16 text-center">Uses</th>
+                <th className="py-3 px-2 w-20 text-center text-red-400" title="Sensor Failure Status (AMS 2750 Rev H 3.4.8)">Status</th>
                 <th className="py-3 px-2 w-20 text-center">Actions</th>
               </tr>
             </thead>
@@ -475,7 +476,7 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                       />
                     </td>
 
-                    {/* Uses */}
+                     {/* Uses */}
                     <td className="py-2.5 px-2 text-center">
                       <div className="flex items-center justify-center gap-1">
                         <input
@@ -495,6 +496,25 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                           </span>
                         )}
                       </div>
+                    </td>
+
+                    {/* Status / Failed */}
+                    <td className="py-2.5 px-2 text-center">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUpdateChannel(ch.id, { failed: !ch.failed });
+                        }}
+                        className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all cursor-pointer shadow-sm ${
+                          ch.failed 
+                            ? 'bg-red-600 text-white animate-pulse' 
+                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                        }`}
+                        title={ch.failed ? 'Sensor marked FAILED / Open Circuit (AMS 2750 Rev H 3.4.8)' : 'Click to mark sensor as FAILED (broken/open circuit)'}
+                      >
+                        {ch.failed ? 'FAILED' : 'Active'}
+                      </button>
                     </td>
 
                     {/* Actions */}
