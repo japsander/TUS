@@ -222,7 +222,7 @@ export async function generateTusDocxBlob(params: {
       spacing: { after: 140 },
       children: [
         new TextRun({
-          text: `FACILITY: ${meta.facilityLocation.toUpperCase()} — NADCAP ACCREDITED HEAT TREATING OPERATION`,
+          text: `FACILITY: ${meta.facilityLocation.toUpperCase()}`,
           font: 'Arial',
           size: 18,
           color: '475569',

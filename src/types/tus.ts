@@ -178,4 +178,6 @@ export interface DetectedDwellPeriod {
   endTimeStr?: string;
   evalStartIndex?: number; // The specific 30-min window used for report data
   evalEndIndex?: number;
+  evalStartTimeSec?: number;
+  evalEndTimeSec?: number;
 }

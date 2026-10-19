@@ -288,6 +288,7 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
                 dwells={dwellPeriods || []} 
                 channels={channels}
                 tempUnit={meta.tempUnit}
+                furnaceClass={meta.furnaceClass}
               />
               <div className="text-[10px] text-slate-500 italic px-1">
                 Visual evidence of stabilized soak periods meeting AMS 2750 Rev H consecutive time requirements.
@@ -346,8 +347,10 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
                   dwells={[dwell]} 
                   channels={channels} 
                   tempUnit={meta.tempUnit} 
+                  furnaceClass={meta.furnaceClass}
                   isZoomed={true}
                   showLegend={false}
+                  hideTooltip={true}
                 />
               </div>
             );

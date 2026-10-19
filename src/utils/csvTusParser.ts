@@ -62,26 +62,31 @@ export function parseTimestampToSeconds(val: string): number {
   if (!val) return 0;
   const clean = val.trim();
 
-  // 1. Try standard Date.parse (ISO, etc.)
+  // 1. Try standard Date.parse (ISO, etc.) or DD/MM/YYYY HH:mm
+  let date: Date | null = null;
   const dateParsed = Date.parse(clean);
   if (!isNaN(dateParsed)) {
-    return Math.floor(dateParsed / 1000);
+    date = new Date(dateParsed);
+  } else {
+    // Try DD/MM/YYYY HH:mm[:ss]
+    const dmyMatch = clean.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (dmyMatch) {
+      const d = parseInt(dmyMatch[1], 10);
+      const m = parseInt(dmyMatch[2], 10) - 1;
+      const y = parseInt(dmyMatch[3], 10);
+      const hh = parseInt(dmyMatch[4], 10);
+      const mm = parseInt(dmyMatch[5], 10);
+      const ss = dmyMatch[6] ? parseInt(dmyMatch[6], 10) : 0;
+      date = new Date(y, m, d, hh, mm, ss);
+    }
   }
 
-  // 2. Try DD/MM/YYYY HH:mm[:ss]
-  const dmyMatch = clean.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-  if (dmyMatch) {
-    const d = parseInt(dmyMatch[1], 10);
-    const m = parseInt(dmyMatch[2], 10) - 1; // 0-indexed months
-    const y = parseInt(dmyMatch[3], 10);
-    const hh = parseInt(dmyMatch[4], 10);
-    const mm = parseInt(dmyMatch[5], 10);
-    const ss = dmyMatch[6] ? parseInt(dmyMatch[6], 10) : 0;
-    const date = new Date(y, m, d, hh, mm, ss);
-    if (!isNaN(date.getTime())) return Math.floor(date.getTime() / 1000);
+  if (date && !isNaN(date.getTime())) {
+    // Return seconds since midnight for this specific date
+    return date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds();
   }
 
-  // 3. Try HH:MM:SS or HH:MM (Time only fallback)
+  // 2. Try HH:MM:SS or HH:MM (Time only fallback)
   const timeMatch = clean.match(/(?:^|\s)(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s|$)/);
   if (timeMatch) {
     const hours = parseInt(timeMatch[1], 10);
@@ -90,10 +95,12 @@ export function parseTimestampToSeconds(val: string): number {
     return hours * 3600 + mins * 60 + secs;
   }
 
-  // 4. Fallback to numeric seconds/milliseconds
+  // 3. Fallback to numeric seconds (if it looks like a day-offset, keep it, otherwise mod it)
   const num = parseFloat(clean);
   if (!isNaN(num)) {
-    return num > 100000000000 ? Math.floor(num / 1000) : Math.floor(num);
+    // If it looks like epoch milliseconds, convert to seconds
+    const sec = num > 100000000000 ? Math.floor(num / 1000) : Math.floor(num);
+    return sec % 86400;
   }
 
   return 0;
@@ -157,6 +164,8 @@ export function parseTusCsv(
   
   let dayOffsetSec = 0;
   let lastRawSec = -1;
+  let firstEpochSec = -1;
+  let firstRowTOD = 0;
 
   for (let i = 1; i < lines.length; i++) {
     const parts = lines[i]
@@ -165,30 +174,53 @@ export function parseTusCsv(
     if (parts.length < rawHeaders.length * 0.5) continue; // skip corrupted line
 
     const timeRaw = parts[timeHeaderIndex] || '';
-    let timeSec = parseTimestampToSeconds(timeRaw);
+    if (!timeRaw || timeRaw.trim() === '') continue;
 
-    // Midnight Rollover Check (Only if we haven't successfully parsed a full date with year/month/day)
-    // If timeSec jumps backwards by more than 12 hours, assume next day.
-    if (lastRawSec !== -1) {
-      if (timeSec < lastRawSec - 43200) {
-        dayOffsetSec += 86400;
+    // Robust time parsing
+    const clean = timeRaw.trim();
+    let timeOfDaySec = -1;
+
+    const timeMatch = clean.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (timeMatch) {
+      const h = parseInt(timeMatch[1], 10);
+      const m = parseInt(timeMatch[2], 10);
+      const s = timeMatch[3] ? parseInt(timeMatch[3], 10) : 0;
+      timeOfDaySec = h * 3600 + m * 60 + s;
+    } else {
+      const parsed = Date.parse(clean);
+      if (!isNaN(parsed)) {
+        const d = new Date(parsed);
+        timeOfDaySec = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
       }
     }
-    lastRawSec = timeSec;
-    const finalSec = timeSec + dayOffsetSec;
 
-    const timeStr = formatSecondsToTime(finalSec);
+    if (timeOfDaySec === -1) continue;
+
+    if (lastRawSec !== -1 && timeOfDaySec < lastRawSec - 3600) {
+      dayOffsetSec += 86400;
+    }
+    const finalSec = timeOfDaySec + dayOffsetSec;
+    lastRawSec = timeOfDaySec;
+
+    if (finalSec === -1) continue; // failed to parse
+    lastRawSec = timeOfDaySec;
+
+    const timeStr = formatSecondsToTime(timeOfDaySec); // Use TOD for string label
 
     const values: Record<string, number> = {};
+    let hasValidValue = false;
     rawHeaders.forEach((h, colIdx) => {
       if (colIdx !== timeHeaderIndex) {
         const valStr = parts[colIdx];
         const num = parseFloat(valStr);
         if (!isNaN(num)) {
           values[h] = num;
+          hasValidValue = true;
         }
       }
     });
+
+    if (!hasValidValue) continue;
 
     if (parsedRows.length > 0) {
       const prevSec = parsedRows[parsedRows.length - 1].timestampSec;
@@ -205,6 +237,9 @@ export function parseTusCsv(
       values,
     });
   }
+
+  // Ensure data is sorted by time to prevent graph artifacts
+  parsedRows.sort((a, b) => a.timestampSec - b.timestampSec);
 
   // Calculate detected logging interval (mode / median)
   let detectedIntervalSeconds = 60; // default 60s
@@ -525,6 +560,8 @@ export function convertToDwellPeriods(
       endTimeStr: d.fullEndTimeStr,
       evalStartIndex: d.evalStartIndex,
       evalEndIndex: d.evalEndIndex,
+      evalStartTimeSec: rows[d.evalStartIndex].timestampSec,
+      evalEndTimeSec: rows[d.evalEndIndex].timestampSec,
     };
   });
 }

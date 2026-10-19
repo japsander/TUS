@@ -64,6 +64,8 @@ import {
   Plus,
   Trash2,
   BookOpen,
+  Save,
+  FolderOpen,
 } from 'lucide-react';
 
 export default function App() {
@@ -261,6 +263,72 @@ export default function App() {
           alert('Presets imported successfully!');
         } catch (err) {
           alert('Error parsing preset JSON file.');
+        }
+      };
+    }
+  };
+
+  const settingsFileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleExportAllSettings = () => {
+    const exportData = {
+      version: '2.0',
+      exportedAt: new Date().toISOString(),
+      meta,
+      chamber,
+      qwz,
+      channels,
+      setpoints,
+      instrument,
+      furnacePresets,
+      chamberPresets,
+      dimUnit,
+      tempUnit,
+      trendData,
+      dwellPeriods,
+      checklist,
+    };
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportData, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', dataStr);
+    downloadAnchor.setAttribute('download', `tus_complete_settings_${meta.furnaceId || 'survey'}_${new Date().toISOString().slice(0, 10)}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  const handleImportAllSettings = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileReader = new FileReader();
+    if (e.target.files && e.target.files[0]) {
+      fileReader.readAsText(e.target.files[0], 'UTF-8');
+      fileReader.onload = (event) => {
+        try {
+          const parsed = JSON.parse(event.target?.result as string);
+          if (parsed.meta) setMeta(parsed.meta);
+          if (parsed.chamber) setChamber(parsed.chamber);
+          if (parsed.qwz) setQWZ(parsed.qwz);
+          if (parsed.channels && Array.isArray(parsed.channels)) setChannels(parsed.channels);
+          if (parsed.setpoints && Array.isArray(parsed.setpoints)) setSetpoints(parsed.setpoints);
+          if (parsed.instrument) setInstrument(parsed.instrument);
+          if (parsed.furnacePresets && Array.isArray(parsed.furnacePresets)) {
+            setFurnacePresets(parsed.furnacePresets);
+            localStorage.setItem('tus_furnace_presets_v1', JSON.stringify(parsed.furnacePresets));
+          }
+          if (parsed.chamberPresets && Array.isArray(parsed.chamberPresets)) {
+            setChamberPresets(parsed.chamberPresets);
+            localStorage.setItem('tus_chamber_presets_v1', JSON.stringify(parsed.chamberPresets));
+          }
+          if (parsed.tempUnit === '°F' || parsed.dimUnit === 'in' || parsed.unitSystem === 'imperial') {
+            setUnitSystem('imperial');
+          } else {
+            setUnitSystem('metric');
+          }
+          if (parsed.trendData && Array.isArray(parsed.trendData)) setTrendData(parsed.trendData);
+          if (parsed.dwellPeriods && Array.isArray(parsed.dwellPeriods)) setDwellPeriods(parsed.dwellPeriods);
+          if (parsed.checklist && Array.isArray(parsed.checklist)) setChecklist(parsed.checklist);
+          alert('All settings and presets loaded successfully!');
+        } catch (err) {
+          alert('Error parsing settings JSON file.');
         }
       };
     }
@@ -786,6 +854,30 @@ export default function App() {
                   °F
                 </button>
               </div>
+
+              <input
+                type="file"
+                ref={settingsFileInputRef}
+                onChange={handleImportAllSettings}
+                accept=".json"
+                className="hidden"
+              />
+              <button
+                onClick={handleExportAllSettings}
+                title="Save all settings, presets, channels, and survey data to local file"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition-all cursor-pointer"
+              >
+                <Save className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="hidden md:inline">Save Settings</span>
+              </button>
+              <button
+                onClick={() => settingsFileInputRef.current?.click()}
+                title="Load all settings and presets from local file"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition-all cursor-pointer"
+              >
+                <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden md:inline">Load Settings</span>
+              </button>
 
               <button
                 onClick={() => setReportModalOpen(true)}
