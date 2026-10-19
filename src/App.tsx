@@ -278,6 +278,14 @@ export default function App() {
     calibrationLab: '',
   });
 
+  // Corrective Actions State for Failed TUS Surveys
+  const [correctiveActions, setCorrectiveActions] = useState({
+    rootCause: '',
+    actionTaken: '',
+    retestPlan: '',
+    status: 'Pending Retest Verification',
+  });
+
   // Nadcap AC7102/8 Audit Checklist
   const [checklist, setChecklist] = useState<NadcapCheckItem[]>([
     {
@@ -352,10 +360,33 @@ export default function App() {
     },
   ]);
 
-  // Active Tab
-  const [activeTab, setActiveTab] = useState<'visual' | 'dimensions' | 'channels' | 'equipment' | 'survey' | 'nadcap' | 'meta' | 'manual'>(
-    'manual'
-  );
+  // Step-by-Step Wizard Workflow (Logical AMS 2750 Order)
+  const STEPS = [
+    { id: 'instructions', label: '1. Setup & Instructions', icon: BookOpen },
+    { id: 'asset', label: '2. Furnace & Report ID', icon: Settings },
+    { id: 'traceability', label: '3. Metrology Traceability', icon: Wrench },
+    { id: 'dimensions', label: '4. Chamber & QWZ Specs', icon: Box },
+    { id: 'layout', label: '5. Sensor Layout & Rigging', icon: Layers },
+    { id: 'analysis', label: '6. Survey Data Analysis', icon: Thermometer },
+    { id: 'compliance', label: '7. Audit & Generate', icon: ShieldCheck },
+  ] as const;
+
+  type StepId = typeof STEPS[number]['id'];
+  const [activeStep, setActiveStep] = useState<StepId>('instructions');
+
+  const currentStepIndex = STEPS.findIndex(s => s.id === activeStep);
+  const nextStep = () => {
+    if (currentStepIndex < STEPS.length - 1) {
+      setActiveStep(STEPS[currentStepIndex + 1].id);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+  const prevStep = () => {
+    if (currentStepIndex > 0) {
+      setActiveStep(STEPS[currentStepIndex - 1].id);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   // Diagram Snapshot for Docx Embedding
   const [diagramImageBase64, setDiagramImageBase64] = useState<string>('');
@@ -701,111 +732,75 @@ export default function App() {
             </div>
           </div>
 
-          {/* Key Parameters Quick Pills & Export Button */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Furnace Class Selector */}
-            <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1 text-xs">
-              <span className="text-slate-500 mr-1.5 font-medium">Class:</span>
-              <select
-                value={meta.furnaceClass}
-                onChange={(e) =>
-                  setMeta({ ...meta, furnaceClass: parseInt(e.target.value) as FurnaceClass })
-                }
-                className="bg-transparent text-cyan-300 font-mono font-bold focus:outline-none cursor-pointer"
-              >
-                <option value={1} className="bg-slate-900">Class 1 (±3°C / ±5°F)</option>
-                <option value={2} className="bg-slate-900">Class 2 (±6°C / ±10°F)</option>
-                <option value={3} className="bg-slate-900">Class 3 (±8°C / ±15°F)</option>
-                <option value={4} className="bg-slate-900">Class 4 (±10°C / ±20°F)</option>
-                <option value={5} className="bg-slate-900">Class 5 (±14°C / ±25°F)</option>
-                <option value={6} className="bg-slate-900">Class 6 (±28°C / ±50°F)</option>
-              </select>
+            {/* Step Navigation Progress Bar (Desktop) */}
+            <div className="hidden lg:flex items-center gap-1 bg-slate-950/50 border border-slate-800 rounded-2xl p-1">
+              {STEPS.map((step, idx) => {
+                const Icon = step.icon;
+                const isActive = activeStep === step.id;
+                const isPast = STEPS.findIndex(s => s.id === activeStep) > idx;
+                return (
+                  <div key={step.id} className="flex items-center">
+                    <button
+                      onClick={() => setActiveStep(step.id)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                        isActive 
+                          ? 'bg-blue-600 text-white font-bold shadow-md' 
+                          : isPast 
+                            ? 'text-blue-400 hover:text-blue-300' 
+                            : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : isPast ? 'text-blue-500' : 'text-slate-600'}`} />
+                      <span className="text-[11px] whitespace-nowrap">{step.label.split('. ')[1]}</span>
+                    </button>
+                    {idx < STEPS.length - 1 && (
+                      <div className="w-4 h-px bg-slate-800 mx-1" />
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
-            {/* Instrumentation Type */}
-            <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1 text-xs">
-              <span className="text-slate-500 mr-1.5 font-medium">Type:</span>
-              <select
-                value={meta.instrumentationType}
-                onChange={(e) =>
-                  setMeta({
-                    ...meta,
-                    instrumentationType: e.target.value as InstrumentationType,
-                  })
-                }
-                className="bg-transparent text-amber-300 font-mono font-bold focus:outline-none cursor-pointer"
-              >
-                <option value="A" className="bg-slate-900">Type A (Recorders + Load)</option>
-                <option value="B" className="bg-slate-900">Type B (Control + High/Low)</option>
-                <option value="C" className="bg-slate-900">Type C (Control + Single)</option>
-                <option value="D" className="bg-slate-900">Type D (Control + Over-Temp)</option>
-              </select>
+            {/* Mobile Step Indicator */}
+            <div className="lg:hidden flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl">
+              <span className="text-[10px] font-bold text-blue-400">STEP {currentStepIndex + 1}/{STEPS.length}</span>
+              <span className="text-xs font-bold text-white truncate max-w-[120px]">{STEPS[currentStepIndex].label.split('. ')[1]}</span>
             </div>
 
-            {/* UK Metric Standard Toggle */}
-            <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-0.5 text-xs font-mono">
+            {/* Global Actions */}
+            <div className="flex items-center gap-2 ml-auto">
+              {/* UK Metric Standard Toggle */}
+              <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-0.5 text-[10px] font-mono">
+                <button
+                  onClick={() => handleToggleUnit('metric')}
+                  className={`px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+                    unitSystem === 'metric'
+                      ? 'bg-blue-600 text-white font-bold'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  °C
+                </button>
+                <button
+                  onClick={() => handleToggleUnit('imperial')}
+                  className={`px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+                    unitSystem === 'imperial'
+                      ? 'bg-blue-600 text-white font-bold'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  °F
+                </button>
+              </div>
+
               <button
-                onClick={() => handleToggleUnit('metric')}
-                className={`px-2 py-1 rounded-lg transition-colors cursor-pointer ${
-                  unitSystem === 'metric'
-                    ? 'bg-blue-600 text-white font-bold'
-                    : 'text-slate-400 hover:text-white'
-                }`}
+                onClick={() => setReportModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
               >
-                °C / mm (UK)
-              </button>
-              <button
-                onClick={() => handleToggleUnit('imperial')}
-                className={`px-2 py-1 rounded-lg transition-colors cursor-pointer ${
-                  unitSystem === 'imperial'
-                    ? 'bg-blue-600 text-white font-bold'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                °F / in (US)
+                <Download className="w-4 h-4" />
+                <span className="hidden sm:inline">Preview Report</span>
               </button>
             </div>
-
-            {/* Test Equipment & Calibration Quick Access Button */}
-            <button
-              onClick={() => setActiveTab('equipment')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all cursor-pointer shadow-sm ${
-                activeTab === 'equipment'
-                  ? 'bg-cyan-600 text-white border-cyan-400 font-bold'
-                  : 'bg-slate-950 hover:bg-slate-900 border-cyan-900/60 hover:border-cyan-500 text-cyan-300'
-              }`}
-              title="Click to view and edit test instrument & thermocouple calibration details"
-            >
-              <Wrench className="w-3.5 h-3.5 text-cyan-400" />
-              <span>
-                Test Cal:{' '}
-                <strong className="text-white">
-                  {instrument.model.split(' ')[0]} {instrument.model.split(' ')[1] || ''}
-                </strong>
-              </span>
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  instrument.calibrationDueDate && new Date(instrument.calibrationDueDate) < new Date()
-                    ? 'bg-red-400 animate-ping'
-                    : 'bg-emerald-400'
-                }`}
-                title={
-                  instrument.calibrationDueDate && new Date(instrument.calibrationDueDate) < new Date()
-                    ? 'Calibration Expired'
-                    : 'UKAS Calibration Valid'
-                }
-              />
-            </button>
-
-            {/* Download Word Document (.docx) Button */}
-            <button
-              onClick={() => setReportModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
-            >
-              <Download className="w-4 h-4" />
-              <span>Generate Word Doc (.docx)</span>
-            </button>
-          </div>
         </div>
 
         {/* Audit Status Bar */}
@@ -882,203 +877,94 @@ export default function App() {
             tempUnit={tempUnit}
             onSelectChannel={setSelectedChannelId}
             onFitSensorsToQWZ={handleFitSensorsToQWZ}
-            onNavigateTab={(tab) => setActiveTab(tab as any)}
+            onNavigateTab={(tab) => {
+              if (tab === 'visual') setActiveStep('dimensions');
+              if (tab === 'channels') setActiveStep('layout');
+              if (tab === 'equipment') setActiveStep('traceability');
+            }}
           />
         </div>
 
-        {/* Right Column: Tabbed Data & Engineering Controls */}
+        {/* Right Column: Guided Step-by-Step Workbench */}
         <div className="xl:col-span-6 flex flex-col space-y-4">
-          {/* Navigation Tabs */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-1.5 flex flex-wrap gap-1 text-xs font-medium">
-            <button
-              onClick={() => setActiveTab('visual')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
-                activeTab === 'visual'
-                  ? 'bg-blue-600 text-white font-bold shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <Box className="w-3.5 h-3.5" />
-              <span>Dimensions & Work Zone ({dimUnit})</span>
-            </button>
+          {/* Step Controls & Info Banner */}
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+                {React.createElement(STEPS[currentStepIndex].icon, { className: "w-4 h-4 text-blue-400" })}
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">{STEPS[currentStepIndex].label}</h3>
+                <p className="text-[10px] text-slate-400 font-medium">Follow the steps for AMS 2750 Rev H compliance</p>
+              </div>
+            </div>
 
-            <button
-              onClick={() => setActiveTab('channels')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
-                activeTab === 'channels'
-                  ? 'bg-blue-600 text-white font-bold shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Channels & Clearances ({channels.length})</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('equipment')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer border ${
-                activeTab === 'equipment'
-                  ? 'bg-cyan-600 text-white font-bold shadow-md border-cyan-400'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60 border-cyan-900/50 bg-cyan-950/20'
-              }`}
-            >
-              <Wrench className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Test Equipment & Cal</span>
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  instrument.calibrationDueDate && new Date(instrument.calibrationDueDate) < new Date()
-                    ? 'bg-red-400 animate-ping'
-                    : 'bg-emerald-400'
-                }`}
-                title={
-                  instrument.calibrationDueDate && new Date(instrument.calibrationDueDate) < new Date()
-                    ? 'Calibration Expired'
-                    : 'Calibration Current'
-                }
-              />
-            </button>
-
-            <button
-              onClick={() => setActiveTab('survey')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
-                activeTab === 'survey'
-                  ? 'bg-blue-600 text-white font-bold shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <Thermometer className="w-3.5 h-3.5" />
-              <span>Survey Readings ({setpoints.length} SP in {tempUnit})</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('nadcap')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
-                activeTab === 'nadcap'
-                  ? 'bg-blue-600 text-white font-bold shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Nadcap AC7102/8 Audit</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('meta')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
-                activeTab === 'meta'
-                  ? 'bg-blue-600 text-white font-bold shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <Settings className="w-3.5 h-3.5" />
-              <span>Report Details</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('manual')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer border ${
-                activeTab === 'manual'
-                  ? 'bg-blue-600 text-white font-bold shadow-md border-blue-400'
-                  : 'text-cyan-300 hover:text-white hover:bg-slate-800/60 border-cyan-900/60 bg-cyan-950/30'
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Instruction Manual</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={prevStep}
+                disabled={currentStepIndex === 0}
+                className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer"
+              >
+                Back
+              </button>
+              <button
+                onClick={nextStep}
+                disabled={currentStepIndex === STEPS.length - 1}
+                className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-500/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer"
+              >
+                Next Step
+              </button>
+            </div>
           </div>
 
-          {/* Active Tab Panel Content */}
-          <div className="flex-1">
-            {activeTab === 'visual' && (
-              <DimensionInputs
-                chamber={chamber}
-                qwz={qwz}
-                dimUnit={dimUnit}
-                channelCount={channels.length}
-                tempUnit={tempUnit}
-                instrument={instrument}
-                chamberPresets={chamberPresets}
-                onUpdateChamber={handleUpdateChamber}
-                onUpdateQWZ={handleUpdateQWZ}
-                onApplyPreset={handleApplyPreset}
-                onSaveCurrentAsPreset={handleSaveCurrentChamberAsPreset}
-                onDeletePreset={handleDeleteChamberPreset}
-                onRenamePreset={handleRenameChamberPreset}
-                onFitSensorsToQWZ={handleFitSensorsToQWZ}
-                onUpdateInstrument={setInstrument}
-                onNavigateTab={(tab) => setActiveTab(tab as any)}
-              />
-            )}
-
-            {activeTab === 'channels' && (
-              <ChannelManager
-                channels={channels}
-                chamber={chamber}
-                qwz={qwz}
-                dimUnit={dimUnit}
-                tempUnit={tempUnit}
-                setpoints={setpoints}
-                selectedChannelId={selectedChannelId}
-                onSelectChannel={setSelectedChannelId}
-                onUpdateChannels={setChannels}
-              />
-            )}
-
-            {activeTab === 'equipment' && (
-              <TestEquipmentManager
-                instrument={instrument}
-                onUpdateInstrument={setInstrument}
-                channels={channels}
-                tempUnit={tempUnit}
-              />
-            )}
-
-            {activeTab === 'survey' && (
-              <SurveyDataSection
-                setpoints={setpoints}
-                channels={channels}
-                furnaceClass={meta.furnaceClass}
-                tempUnit={tempUnit}
-                instrumentError={instrument.maxPermissibleError}
-                meta={meta}
-                onUpdateSetpoints={setSetpoints}
-                onUpdateChannels={setChannels}
-                onUpdateMeta={setMeta}
-                onUpdateTrendData={setTrendData}
-                onUpdateDwellPeriods={setDwellPeriods}
-              />
-            )}
-
-            {activeTab === 'nadcap' && (
-              <NadcapChecklist
-                checklist={checklist}
-                instrument={instrument}
-                meta={meta}
-                onUpdateChecklist={setChecklist}
-                onUpdateInstrument={setInstrument}
-                onUpdateMeta={setMeta}
-              />
-            )}
-
-            {activeTab === 'manual' && (
+          {/* Active Step Content */}
+          <div className="flex-1 overflow-y-auto pr-1">
+            {activeStep === 'instructions' && (
               <InstructionManual
                 tempUnit={tempUnit}
                 dimUnit={dimUnit}
-                onNavigateTab={(tab) => setActiveTab(tab as any)}
+                onNavigateTab={(tab) => {
+                  if (tab === 'visual') setActiveStep('dimensions');
+                  if (tab === 'survey') setActiveStep('analysis');
+                }}
               />
             )}
 
-            {activeTab === 'meta' && (
-              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4">
-                <h3 className="font-semibold text-slate-100 text-sm border-b border-slate-800 pb-3 flex items-center gap-2">
-                  <Settings className="w-4 h-4 text-cyan-400" />
-                  <span>Furnace Identification & Audit Metadata</span>
-                </h3>
+            {activeStep === 'asset' && (
+              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 className="font-semibold text-slate-100 text-sm flex items-center gap-2">
+                    <Settings className="w-4 h-4 text-cyan-400" />
+                    <span>Furnace Identification & Audit Metadata</span>
+                  </h3>
+                  <div className="flex items-center gap-4">
+                     <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-slate-400 font-medium">Class:</span>
+                        <select
+                          value={meta.furnaceClass}
+                          onChange={(e) => setMeta({ ...meta, furnaceClass: parseInt(e.target.value) as FurnaceClass })}
+                          className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-0.5 text-[10px] text-cyan-300 font-bold focus:outline-none cursor-pointer"
+                        >
+                          {[1,2,3,4,5,6].map(c => <option key={c} value={c}>Class {c}</option>)}
+                        </select>
+                     </div>
+                     <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-slate-400 font-medium">Type:</span>
+                        <select
+                          value={meta.instrumentationType}
+                          onChange={(e) => setMeta({ ...meta, instrumentationType: e.target.value as InstrumentationType })}
+                          className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-0.5 text-[10px] text-amber-300 font-bold focus:outline-none cursor-pointer"
+                        >
+                          {['A','B','C','D'].map(t => <option key={t} value={t}>Type {t}</option>)}
+                        </select>
+                     </div>
+                  </div>
+                </div>
 
                 {/* Furnace Presets Bar */}
                 <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2 flex-1 min-w-[260px]">
-                    <span className="text-slate-400 font-medium text-xs">Furnace Preset:</span>
+                    <span className="text-slate-400 font-medium text-xs">Quick Load Preset:</span>
                     <select
                       value={selectedFurnacePresetId}
                       onChange={(e) => handleSelectFurnacePreset(e.target.value)}
@@ -1094,261 +980,151 @@ export default function App() {
                         ))
                       )}
                     </select>
-                    <button
-                      onClick={() => handleRenameFurnacePreset(selectedFurnacePresetId)}
-                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium cursor-pointer"
-                      title="Rename selected furnace preset"
-                    >
-                      Rename
-                    </button>
-                    <button
-                      onClick={() => handleDeleteFurnacePreset(selectedFurnacePresetId)}
-                      className="p-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-400 rounded-lg text-xs cursor-pointer"
-                      title="Delete selected furnace preset"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <button onClick={() => handleDeleteFurnacePreset(selectedFurnacePresetId)} className="p-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-400 rounded-lg text-xs cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
-
                   <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder="New preset name..."
-                      value={newFurnacePresetName}
-                      onChange={(e) => setNewFurnacePresetName(e.target.value)}
-                      className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:outline-none"
-                    />
-                    <button
-                      onClick={handleSaveCurrentAsFurnacePreset}
-                      className="flex items-center gap-1.5 px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Save Preset
-                    </button>
+                    <input type="text" placeholder="New preset name..." value={newFurnacePresetName} onChange={(e) => setNewFurnacePresetName(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:outline-none" />
+                    <button onClick={handleSaveCurrentAsFurnacePreset} className="flex items-center gap-1.5 px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold cursor-pointer"><Plus className="w-3.5 h-3.5" /> Save</button>
                   </div>
-                </div>
-
-                {/* Export / Import Shared Presets Bar */}
-                <div className="flex items-center justify-end gap-2 pt-1">
-                  <button
-                    onClick={handleExportAllPresets}
-                    className="flex items-center gap-1.5 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 rounded-lg text-xs font-medium cursor-pointer"
-                    title="Export all furnace and chamber presets to a JSON file for sharing with colleagues"
-                  >
-                    <Download className="w-3.5 h-3.5" /> Export All Presets (.json)
-                  </button>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-1.5 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 rounded-lg text-xs font-medium cursor-pointer"
-                    title="Import presets from a shared JSON file"
-                  >
-                    <Upload className="w-3.5 h-3.5" /> Import Presets
-                  </button>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleImportAllPresets}
-                    accept=".json"
-                    className="hidden"
-                  />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <label className="block text-slate-400 mb-1">Company / Facility Name</label>
-                    <input
-                      type="text"
-                      value={meta.companyName}
-                      onChange={(e) => setMeta({ ...meta, companyName: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1">Facility Location</label>
-                    <input
-                      type="text"
-                      value={meta.facilityLocation}
-                      onChange={(e) => setMeta({ ...meta, facilityLocation: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1">Report Number</label>
-                    <input
-                      type="text"
-                      value={meta.reportNumber}
-                      onChange={(e) => setMeta({ ...meta, reportNumber: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1">Revision</label>
-                    <input
-                      type="text"
-                      value={meta.revision}
-                      onChange={(e) => setMeta({ ...meta, revision: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1">Furnace Equipment Tag / ID</label>
-                    <input
-                      type="text"
-                      value={meta.furnaceId}
-                      onChange={(e) => setMeta({ ...meta, furnaceId: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1">Equipment Name / Description</label>
-                    <input
-                      type="text"
-                      value={meta.furnaceName}
-                      onChange={(e) => setMeta({ ...meta, furnaceName: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1">Furnace Model & Serial Number</label>
-                    <input
-                      type="text"
-                      value={`${meta.furnaceModel} | ${meta.furnaceSerial}`}
-                      onChange={(e) => {
-                        const parts = e.target.value.split('|');
-                        setMeta({
-                          ...meta,
-                          furnaceModel: parts[0]?.trim() || '',
-                          furnaceSerial: parts[1]?.trim() || '',
-                        });
-                      }}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1">Survey Purpose</label>
-                    <select
-                      value={meta.surveyReason}
-                      onChange={(e) =>
-                        setMeta({
-                          ...meta,
-                          surveyReason: e.target.value as any,
-                        })
-                      }
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none"
-                    >
-                      <option value="Periodic">Periodic TUS (Interval per AMS 2750 Rev H Table 14)</option>
-                      <option value="Initial Qualification">Initial Qualification Survey</option>
-                      <option value="Post-Maintenance / Relining">Post-Maintenance / Refractory Relining</option>
-                      <option value="Thermocouple Failure">Post Control Sensor Replacement</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1">Atmosphere</label>
-                    <input
-                      type="text"
-                      value={meta.atmosphere}
-                      onChange={(e) => setMeta({ ...meta, atmosphere: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1">Heating Method</label>
-                    <input
-                      type="text"
-                      value={meta.heatingMethod}
-                      onChange={(e) => setMeta({ ...meta, heatingMethod: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1">Load Condition</label>
-                    <select
-                      value={meta.loadCondition}
-                      onChange={(e) =>
-                        setMeta({ ...meta, loadCondition: e.target.value as any })
-                      }
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none"
-                    >
-                      <option value="Empty">Empty Furnace Chamber</option>
-                      <option value="Simulated Production Load">Simulated Production Load</option>
-                      <option value="Maximum Production Load">Maximum Production Load Rack</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1">Circulation Fan Condition</label>
-                    <input
-                      type="text"
-                      value={meta.fanCondition}
-                      onChange={(e) => setMeta({ ...meta, fanCondition: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1">Qualified Operating Temp Min ({tempUnit})</label>
-                    <input
-                      type="number"
-                      value={meta.operatingTempMin || ''}
-                      onChange={(e) => setMeta({ ...meta, operatingTempMin: parseFloat(e.target.value) || 0 })}
-                      placeholder="e.g. 300"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1">Qualified Operating Temp Max ({tempUnit})</label>
-                    <input
-                      type="number"
-                      value={meta.operatingTempMax || ''}
-                      onChange={(e) => setMeta({ ...meta, operatingTempMax: parseFloat(e.target.value) || 0 })}
-                      placeholder="e.g. 1100"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-
-
-
+                  <div><label className="block text-slate-400 mb-1">Company / Facility Name</label><input type="text" value={meta.companyName} onChange={(e) => setMeta({ ...meta, companyName: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none" /></div>
+                  <div><label className="block text-slate-400 mb-1">Facility Location</label><input type="text" value={meta.facilityLocation} onChange={(e) => setMeta({ ...meta, facilityLocation: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none" /></div>
+                  <div><label className="block text-slate-400 mb-1">Report Number</label><input type="text" value={meta.reportNumber} onChange={(e) => setMeta({ ...meta, reportNumber: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none" /></div>
+                  <div><label className="block text-slate-400 mb-1">Revision</label><input type="text" value={meta.revision} onChange={(e) => setMeta({ ...meta, revision: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none" /></div>
+                  <div><label className="block text-slate-400 mb-1">Furnace Equipment Tag / ID</label><input type="text" value={meta.furnaceId} onChange={(e) => setMeta({ ...meta, furnaceId: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none" /></div>
+                  <div><label className="block text-slate-400 mb-1">Equipment Name / Description</label><input type="text" value={meta.furnaceName} onChange={(e) => setMeta({ ...meta, furnaceName: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none" /></div>
+                  
                   <div className="col-span-2 bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3 mt-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-amber-400" />
-                        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-300">
-                          AMS 2750 Rev H Table 14: TUS Interval Extension
-                        </h4>
+                        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-300">TUS Interval Extension (AMS 2750 Table 14)</h4>
                       </div>
                       <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={isExtendedInterval}
-                          onChange={(e) => setIsExtendedInterval(e.target.checked)}
-                          className="rounded border-slate-700 text-cyan-500 focus:ring-0"
-                        />
-                        <span className="text-[10px] text-slate-300">Apply Extended Interval (After 8 success)</span>
+                        <input type="checkbox" checked={isExtendedInterval} onChange={(e) => setIsExtendedInterval(e.target.checked)} className="rounded border-slate-700 text-cyan-500 focus:ring-0" />
+                        <span className="text-[10px] text-slate-300">Apply Extended Interval</span>
                       </label>
                     </div>
-                    
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="text-[10px] text-slate-400 leading-relaxed">
-                        {TUS_INTERVALS[meta.furnaceClass].description}
-                      </div>
+                      <div className="text-[10px] text-slate-400 leading-relaxed">{TUS_INTERVALS[meta.furnaceClass].description}</div>
                       <div className="bg-slate-900 border border-slate-800 p-2 rounded-lg text-center">
                         <div className="text-[9px] uppercase font-bold text-slate-500">Next TUS Due Date</div>
-                        <div className="text-sm font-bold text-cyan-300 font-mono">
-                          {calculateNextTusDueDate(meta.date, meta.furnaceClass, isExtendedInterval)}
-                        </div>
+                        <div className="text-sm font-bold text-cyan-300 font-mono">{calculateNextTusDueDate(meta.date, meta.furnaceClass, isExtendedInterval)}</div>
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {activeStep === 'traceability' && (
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <TestEquipmentManager
+                  instrument={instrument}
+                  onUpdateInstrument={setInstrument}
+                  channels={channels}
+                  tempUnit={tempUnit}
+                />
+              </div>
+            )}
+
+            {activeStep === 'dimensions' && (
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <DimensionInputs
+                  chamber={chamber}
+                  qwz={qwz}
+                  dimUnit={dimUnit}
+                  channelCount={channels.length}
+                  tempUnit={tempUnit}
+                  instrument={instrument}
+                  chamberPresets={chamberPresets}
+                  onUpdateChamber={handleUpdateChamber}
+                  onUpdateQWZ={handleUpdateQWZ}
+                  onApplyPreset={handleApplyPreset}
+                  onSaveCurrentAsPreset={handleSaveCurrentChamberAsPreset}
+                  onDeletePreset={handleDeleteChamberPreset}
+                  onRenamePreset={handleRenameChamberPreset}
+                  onFitSensorsToQWZ={handleFitSensorsToQWZ}
+                  onUpdateInstrument={setInstrument}
+                  onNavigateTab={(tab) => {
+                    if (tab === 'channels') setActiveStep('layout');
+                  }}
+                />
+              </div>
+            )}
+
+            {activeStep === 'layout' && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <ChannelManager
+                  channels={channels}
+                  chamber={chamber}
+                  qwz={qwz}
+                  dimUnit={dimUnit}
+                  tempUnit={tempUnit}
+                  setpoints={setpoints}
+                  selectedChannelId={selectedChannelId}
+                  onSelectChannel={setSelectedChannelId}
+                  onUpdateChannels={setChannels}
+                />
+                
+                <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5">
+                  <div className="flex items-center gap-2 mb-4 border-b border-slate-800 pb-3">
+                    <Compass className="w-4 h-4 text-amber-400" />
+                    <h3 className="font-semibold text-slate-100 text-sm">Wire Rigging & Cutting Schedule</h3>
+                  </div>
+                  <WireRiggingGuide 
+                    qwz={qwz}
+                    channels={channels}
+                    dimUnit={dimUnit}
+                  />
+                </div>
+              </div>
+            )}
+
+            {activeStep === 'analysis' && (
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <SurveyDataSection
+                  setpoints={setpoints}
+                  channels={channels}
+                  furnaceClass={meta.furnaceClass}
+                  tempUnit={tempUnit}
+                  instrumentError={instrument.maxPermissibleError}
+                  meta={meta}
+                  onUpdateSetpoints={setSetpoints}
+                  onUpdateChannels={setChannels}
+                  onUpdateMeta={setMeta}
+                  onUpdateTrendData={setTrendData}
+                  onUpdateDwellPeriods={setDwellPeriods}
+                />
+              </div>
+            )}
+
+            {activeStep === 'compliance' && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <NadcapChecklist
+                  checklist={checklist}
+                  instrument={instrument}
+                  meta={meta}
+                  onUpdateChecklist={setChecklist}
+                  onUpdateInstrument={setInstrument}
+                  onUpdateMeta={setMeta}
+                />
+                
+                <div className="bg-blue-600/10 border border-blue-500/30 rounded-2xl p-6 text-center">
+                   <CheckCircle2 className="w-12 h-12 text-blue-500 mx-auto mb-3" />
+                   <h3 className="text-lg font-bold text-white mb-2">Final Survey Verification</h3>
+                   <p className="text-sm text-slate-400 mb-6 max-w-md mx-auto">
+                     All survey data has been processed. Review the checklist above and the report preview before final generation.
+                   </p>
+                   <button
+                    onClick={() => setReportModalOpen(true)}
+                    className="inline-flex items-center gap-3 px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold shadow-xl shadow-blue-500/20 transition-all cursor-pointer"
+                  >
+                    <Download className="w-5 h-5" />
+                    <span>Generate Full AMS 2750 Report (.pdf)</span>
+                  </button>
                 </div>
               </div>
             )}
@@ -1372,6 +1148,8 @@ export default function App() {
         diagramImageBase64={diagramImageBase64}
         trendData={trendData}
         dwellPeriods={dwellPeriods}
+        correctiveActions={correctiveActions}
+        onUpdateCorrectiveActions={setCorrectiveActions}
       />
     </div>
   );

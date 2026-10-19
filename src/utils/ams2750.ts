@@ -447,6 +447,8 @@ export function getLogicalWireRiggingSchedule(
 
   let stepCounter = 1;
 
+  const seenConnections = new Set<string>();
+
   const addCable = (
     numA: number,
     numB: number,
@@ -454,12 +456,21 @@ export function getLogicalWireRiggingSchedule(
     title: string,
     description: string
   ) => {
+    if (numA === numB || numA === 0 || numB === 0) return;
+    
+    // Normalize connection key so order doesn't matter (1-2 is same as 2-1)
+    const [min, max] = [Math.min(numA, numB), Math.max(numA, numB)];
+    const connectionKey = `${min}-${max}`;
+    
+    if (seenConnections.has(connectionKey)) return;
+    seenConnections.add(connectionKey);
+
     const a = map.get(numA);
     const b = map.get(numB);
     if (a && b) {
       connections.push([a, b]);
       cables.push({
-        id: `cable-${numA}-${numB}`,
+        id: `cable-${min}-${max}`,
         stepNumber: stepCounter++,
         category,
         title,
