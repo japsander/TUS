@@ -68,7 +68,16 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
   const tolerance = CLASS_TOLERANCES[meta.furnaceClass][meta.tempUnit];
 
   const setpointAnalyses = setpoints.map((sp) =>
-    evaluateSetpoint(sp, channels, meta.furnaceClass, meta.tempUnit, instrument.instrumentCorrection)
+    evaluateSetpoint(
+      sp,
+      channels,
+      meta.furnaceClass,
+      meta.tempUnit,
+      instrument.instrumentCorrection ?? 0,
+      minSensors,
+      qwz,
+      meta.furnaceApplication || 'Parts'
+    )
   );
   const overallPassed = 
     setpointAnalyses.every((sa) => sa.passed) && 

@@ -217,7 +217,7 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
             </h3>
           </div>
           <p className="text-xs text-slate-400">
-            AMS 2750 Rev H Table 11: Enter exact physical distances from all 6 chamber surfaces (Left, Right, Front, Rear, Floor, Ceiling).
+            AMS 2750 Rev H Table 17 & § 3.5.10.3: Enter exact physical distances from all 6 chamber surfaces (Left, Right, Front, Rear, Floor, Ceiling).
           </p>
         </div>
 
@@ -293,7 +293,7 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                 <th className="py-3 px-1 text-center" title="Sensor Error Indicator">Err</th>
                 <th className="py-3 px-2 w-28 text-center text-cyan-400">Lot #</th>
                 <th className="py-3 px-2 w-16 text-center">Uses</th>
-                <th className="py-3 px-2 w-20 text-center text-red-400" title="Sensor Failure Status (AMS 2750 Rev H 3.4.8)">Status</th>
+                <th className="py-3 px-2 w-20 text-center text-red-400" title="Sensor Failure Status (AMS 2750 Rev H § 3.5.10.2 & § 3.5.14.1.6)">Status</th>
                 <th className="py-3 px-2 w-20 text-center">Actions</th>
               </tr>
             </thead>
@@ -342,10 +342,14 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                         <option value="N">Type N</option>
                         <option value="K">Type K</option>
                         <option value="J">Type J</option>
+                        <option value="E">Type E</option>
+                        <option value="T">Type T</option>
+                        <option value="M">Type M</option>
                         <option value="R">Type R</option>
                         <option value="S">Type S</option>
                         <option value="B">Type B</option>
-                        <option value="T">Type T</option>
+                        <option value="C">Type C</option>
+                        <option value="RTD">RTD</option>
                       </select>
                     </td>
 
@@ -491,7 +495,7 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                           }`}
                         />
                         {isOverused && (
-                          <span title="AMS 2750 Limit Exceeded (90 uses)">
+                          <span title="AMS 2750 Rev H Table 1 & Table 2 Limit: Check max uses/days at temperature">
                             <AlertCircle className="w-3.5 h-3.5 text-red-500" />
                           </span>
                         )}
@@ -511,7 +515,7 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                             ? 'bg-red-600 text-white animate-pulse' 
                             : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                         }`}
-                        title={ch.failed ? 'Sensor marked FAILED / Open Circuit (AMS 2750 Rev H 3.4.8)' : 'Click to mark sensor as FAILED (broken/open circuit)'}
+                        title={ch.failed ? 'Sensor marked FAILED / Open Circuit (AMS 2750 Rev H § 3.5.10.2 & § 3.5.14.1.6)' : 'Click to mark sensor as FAILED (broken/open circuit)'}
                       >
                         {ch.failed ? 'FAILED' : 'Active'}
                       </button>
@@ -573,13 +577,17 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                   onChange={(e) => setBatchWireType(e.target.value as WireType)}
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-amber-300 font-mono focus:border-cyan-500 focus:outline-none"
                 >
-                  <option value="N">Type N (Aerospace High Temp standard)</option>
-                  <option value="K">Type K (Chromel-Alumel)</option>
-                  <option value="J">Type J (Iron-Constantan)</option>
-                  <option value="R">Type R (Platinum / 13% Rhodium)</option>
-                  <option value="S">Type S (Platinum / 10% Rhodium)</option>
-                  <option value="B">Type B (Platinum / 30% Rhodium)</option>
-                  <option value="T">Type T (Copper-Constantan)</option>
+                  <option value="N">Type N (Nicrosil-Nisil — Base Metal)</option>
+                  <option value="K">Type K (Chromel-Alumel — Base Metal)</option>
+                  <option value="J">Type J (Iron-Constantan — Base Metal)</option>
+                  <option value="E">Type E (Chromel-Constantan — Base Metal)</option>
+                  <option value="T">Type T (Copper-Constantan — Base Metal)</option>
+                  <option value="M">Type M (Ni-Mo / Ni-Co — Vacuum Base Metal)</option>
+                  <option value="R">Type R (Pt / 13% Rh — Noble Metal)</option>
+                  <option value="S">Type S (Pt / 10% Rh — Noble Metal)</option>
+                  <option value="B">Type B (Pt-30% Rh / Pt-6% Rh — Noble Metal)</option>
+                  <option value="C">Type C (W-5% Re / W-26% Re — Refractory)</option>
+                  <option value="RTD">RTD (Resistance Temperature Detector)</option>
                 </select>
               </div>
 

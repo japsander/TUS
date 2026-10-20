@@ -3,7 +3,9 @@ export type TempUnit = '°F' | '°C';
 export type DimUnit = 'in' | 'mm';
 
 export type FurnaceClass = 1 | 2 | 3 | 4 | 5 | 6;
-export type InstrumentationType = 'A' | 'B' | 'C' | 'D';
+export type InstrumentationType = 'A' | 'B' | 'C' | 'D+' | 'D' | 'E';
+export type FurnaceApplication = 'Parts' | 'Raw Material';
+export type SensorClassification = 'Expendable' | 'Nonexpendable';
 
 export interface PermanentSensorPosition {
   x: number;
@@ -35,13 +37,14 @@ export interface QualifiedWorkZone {
   offsetCeiling: number;
 }
 
-export type WireType = 'K' | 'N' | 'J' | 'R' | 'S' | 'B' | 'T';
+export type WireType = 'J' | 'E' | 'K' | 'N' | 'M' | 'T' | 'R' | 'S' | 'B' | 'C' | 'RTD';
 
 export interface ThermocoupleChannel {
   id: string;
   channelNumber: number;
   label: string; // e.g. "TC 1 - Top Left Front"
   type: WireType;
+  sensorClassification?: SensorClassification;
   rollLotNumber: string;
   calibrationDate: string;
   expirationDate: string;
@@ -145,6 +148,8 @@ export interface SurveyMetadata {
   surveyReason: 'Periodic' | 'Initial Qualification' | 'Post-Maintenance / Relining' | 'Thermocouple Failure';
   furnaceClass: FurnaceClass;
   instrumentationType: InstrumentationType;
+  furnaceApplication?: FurnaceApplication;
+  radiationTransfer?: boolean;
   operatingTempMin: number;
   operatingTempMax: number;
   unitSystem: UnitSystem;
@@ -152,7 +157,7 @@ export interface SurveyMetadata {
   dimUnit: DimUnit;
   atmosphere: string; // Air, Nitrogen, Argon, Vacuum, Endothermic
   heatingMethod: string; // Electric Resistance, Gas Radiant Tube, Direct Fired
-  loadCondition: 'Empty' | 'Simulated Production Load' | 'Maximum Production Load';
+  loadCondition: 'Empty' | 'Simulated Production Load' | 'Maximum Production Load' | 'Rack';
   fanCondition: string; // High Speed On, Circulating, Off
   dataIntervalSeconds: number; // Max 120s for AMS2750 Rev H
   technicianName: string;

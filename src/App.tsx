@@ -20,7 +20,7 @@ import {
   TusTrendData,
   DetectedDwellPeriod,
 } from './types/tus';
-import { TUS_INTERVALS, calculateNextTusDueDate } from './utils/tusCompliance';
+import { getTusIntervalInfo, calculateNextTusDueDate } from './utils/tusCompliance';
 import {
   generateStandardAMS2750Sensors,
   CLASS_TOLERANCES,
@@ -120,6 +120,7 @@ export default function App() {
     surveyReason: 'Periodic',
     furnaceClass: 2,
     instrumentationType: 'B',
+    furnaceApplication: 'Parts',
     operatingTempMin: 300,
     operatingTempMax: 1100,
     unitSystem: 'metric',
@@ -367,9 +368,9 @@ export default function App() {
     {
       id: 'nc-3',
       code: 'AC7102/8 § 4.3',
-      question: 'Number of TUS sensors meets or exceeds AMS 2750 Rev H Table 11 requirements.',
+      question: 'Number of TUS sensors meets or exceeds AMS 2750 Rev H Table 17 requirements and § 3.5.10.2 failure limits.',
       compliant: true,
-      notes: 'Volume 0.441 m³ requires 9 sensors minimum; 21 verified per Picture 1.',
+      notes: 'Volume 0.441 m³ requires 9 sensors minimum per Table 17.',
     },
     {
       id: 'nc-4',
@@ -604,26 +605,43 @@ export default function App() {
   const { minSensors } = getMinRequiredSensors(volumeCuFt, volumeM3);
   const tolerance = CLASS_TOLERANCES[meta.furnaceClass][tempUnit];
   const setpointAnalyses = setpoints.map((sp) =>
-    evaluateSetpoint(sp, channels, meta.furnaceClass, tempUnit, instrument.instrumentCorrection ?? 0)
+    evaluateSetpoint(
+      sp,
+      channels,
+      meta.furnaceClass,
+      tempUnit,
+      instrument.instrumentCorrection ?? 0,
+      minSensors,
+      qwz,
+      meta.furnaceApplication || 'Parts'
+    )
   );
   const isOverallConformant = checklist.every((item) => item.compliant);
 
   // Auto-synchronize Audit Criteria Verification Matrix with field completeness & live TUS results
   useEffect(() => {
     setChecklist((prevChecklist) => {
-      const mpeLimit = meta.instrumentationType === 'A' || meta.instrumentationType === 'B' ? 0.6 : 1.1;
+      // AMS 2750 Rev H Table 7 Field Test Instrument MPE Limit: ±1.1°F or ±0.6°C
+      const mpeLimit = tempUnit === '°C' ? 0.6 : 1.1;
 
       // Check presence of imported CSV data / readings
       const hasCsvData = trendData.length > 0 || setpoints.some((sp) => Object.keys(sp.readings).length > 0);
 
-      // Working (non-failed) sensors evaluation per AMS 2750 Rev H Section 3.4.8
+      // Working (non-failed) sensors evaluation per AMS 2750 Rev H § 3.5.10.2 & § 3.5.14.1.6
       const workingChannels = channels.filter((ch) => !ch.failed);
       const failedChannelsCount = channels.length - workingChannels.length;
-      const maxAllowedFailures = channels.length > 16 ? 2 : 1;
+      const maxAllowedFailures = channels.length === 9 ? 1 : Math.floor(channels.length * 0.10);
+      const hasValidCountAfterFailure = channels.length === 9
+        ? failedChannelsCount <= 1
+        : (workingChannels.length >= minSensors && failedChannelsCount <= maxAllowedFailures);
+      const hasSensorFailureViolation = setpointAnalyses.some(
+        (sa) => sa.sensorFailureNote && sa.sensorFailureNote.includes('Violation')
+      );
       const isSensorCountCompliant =
         hasCsvData &&
-        workingChannels.length >= minSensors &&
-        failedChannelsCount <= maxAllowedFailures;
+        channels.length >= minSensors &&
+        hasValidCountAfterFailure &&
+        !hasSensorFailureViolation;
 
       // Soak Duration (≥ 30 min) & Sensor Thermal Stabilization from CSV Data (nc-6)
       const isSoakDurationCompliant =
@@ -663,7 +681,7 @@ export default function App() {
         if (item.id === 'nc-1') {
           newCompliant = isNc1Complete;
           newNotes = isNc1Complete
-            ? `Survey verified across operating temperature envelope (${meta.operatingTempMin}°${tempUnit} to ${meta.operatingTempMax}°${tempUnit}).`
+            ? `Survey verified across operating temperature envelope (${meta.operatingTempMin}${tempUnit} to ${meta.operatingTempMax}${tempUnit}).`
             : 'NON-COMPLIANT: Operating temperature envelope or setpoints incomplete.';
         } else if (item.id === 'nc-2') {
           newCompliant = isNc2Complete;
@@ -674,52 +692,52 @@ export default function App() {
           newCompliant = isSensorCountCompliant;
           if (!hasCsvData) {
             newNotes = 'NON-COMPLIANT: No CSV survey data imported. Import datalogger CSV to verify working sensors.';
-          } else if (workingChannels.length < minSensors) {
-            newNotes = `NON-COMPLIANT: ${workingChannels.length} working sensors in CSV data, but minimum ${minSensors} required for ${volumeM3.toFixed(3)} m³ volume per AMS 2750 Table 11 (${failedChannelsCount} failed).`;
-          } else if (failedChannelsCount > maxAllowedFailures) {
-            newNotes = `NON-COMPLIANT: ${failedChannelsCount} sensor failures exceeded AMS 2750 Rev H allowance (Max ${maxAllowedFailures} allowed for ${channels.length} sensors).`;
+          } else if (channels.length < minSensors) {
+            newNotes = `NON-COMPLIANT: ${channels.length} total TUS sensors configured, but minimum ${minSensors} required for ${volumeM3.toFixed(3)} m³ volume per AMS 2750 Rev H Table 17.`;
+          } else if (hasSensorFailureViolation || !hasValidCountAfterFailure) {
+            newNotes = `NON-COMPLIANT: ${failedChannelsCount} sensor failure(s) violated AMS 2750 Rev H § 3.5.10.2 / § 3.5.14.1.6 (Max ${maxAllowedFailures} allowed for ${channels.length} sensors, must keep ≥${minSensors} active, no adjacent corners, no control sensor failure).`;
           } else {
-            newNotes = `Verified ${workingChannels.length} working sensors in imported CSV data (Minimum required: ${minSensors} for ${volumeM3.toFixed(3)} m³ volume${failedChannelsCount > 0 ? `, ${failedChannelsCount} allowed failure within AMS 2750 limit` : ''}).`;
+            newNotes = `Verified ${workingChannels.length}/${channels.length} active sensors in survey data (Table 17 minimum required: ${minSensors} for ${volumeM3.toFixed(3)} m³ volume${failedChannelsCount > 0 ? `, ${failedChannelsCount} open/failed sensor allowed within § 3.5.10.2 limits` : ''}).`;
           }
         } else if (item.id === 'nc-4') {
           newCompliant = isNc4Complete;
           newNotes = isNc4Complete
-            ? 'Thermocouple wire roll batch lot and calibration correction factors verified.'
+            ? 'Thermocouple wire roll batch lot and calibration correction factors verified per § 3.5.14.1.'
             : 'NON-COMPLIANT: Thermocouple wire roll lot numbers or calibration details incomplete.';
         } else if (item.id === 'nc-5') {
           newCompliant = isNc5Complete;
           newNotes = isNc5Complete
-            ? `Continuous data logging at ${meta.dataIntervalSeconds}-second intervals verified from imported CSV timestamps.`
-            : 'NON-COMPLIANT: Data logging interval empty. Import datalogger CSV to auto-detect logging interval.';
+            ? `Continuous data logging at ${meta.dataIntervalSeconds}-second intervals verified (AMS 2750 Rev H § 3.5.10.7 max 120s).`
+            : 'NON-COMPLIANT: Data logging interval empty or >120s. Import datalogger CSV to auto-detect logging interval.';
         } else if (item.id === 'nc-6') {
           newCompliant = isSoakDurationCompliant;
           if (!hasCsvData) {
-            newNotes = 'NON-COMPLIANT: No CSV survey data imported. Import datalogger CSV to verify thermal stabilization & soak duration.';
+            newNotes = 'NON-COMPLIANT: No CSV survey data imported. Import datalogger CSV to verify thermal stabilization & ≥30-min soak duration.';
           } else if (!isSoakDurationCompliant) {
-            newNotes = 'NON-COMPLIANT: Imported CSV data shows soak duration < 30 minutes, missing timestamps, or sensors failed to stabilize within tolerance.';
+            newNotes = 'NON-COMPLIANT: Imported CSV data shows soak duration < 30 minutes, missing timestamps, or sensors failed to remain within tolerance (§ 3.5.10.9).';
           } else {
-            newNotes = '30-minute steady-state soak duration and sensor thermal stabilization verified from imported CSV data.';
+            newNotes = '≥30-minute steady-state soak duration and sensor thermal stabilization verified per AMS 2750 Rev H § 3.5.10.9.';
           }
         } else if (item.id === 'nc-7') {
           newCompliant = isNc7Complete;
           newNotes = isNc7Complete
-            ? `All setpoint temperature spreads satisfy Class ${meta.furnaceClass} tolerance (±${tolerance}°${tempUnit}).`
-            : `NON-COMPLIANT: Imported survey data incomplete or temperature spread exceeded Class ${meta.furnaceClass} tolerance (±${tolerance}°${tempUnit}).`;
+            ? `All setpoint temperature spreads satisfy Class ${meta.furnaceClass} tolerance (±${tolerance}${tempUnit}) with no overshoot above upper tolerance (§ 3.5.10.6).`
+            : `NON-COMPLIANT: Survey data incomplete, temperature exceeded Class ${meta.furnaceClass} tolerance (±${tolerance}${tempUnit}), overshoot occurred, or offset exceeded Table 18.`;
         } else if (item.id === 'nc-8') {
           newCompliant = isNc8Complete;
           newNotes = isNc8Complete
-            ? `${instrument.model || 'Field Instrument'} (S/N: ${instrument.serialNumber}) calibrated with ${instrument.traceabilityNumber} traceability.`
-            : `NON-COMPLIANT: Instrument details, serial number, calibration dates, traceability number, or MPE limit (${mpeLimit}°C) incomplete.`;
+            ? `${instrument.model || 'Field Instrument'} (S/N: ${instrument.serialNumber}) calibrated with ${instrument.traceabilityNumber} traceability (MPE ≤ ±${mpeLimit}${tempUnit} per Table 7).`
+            : `NON-COMPLIANT: Instrument details, serial number, calibration dates, traceability number, or Table 7 MPE limit (±${mpeLimit}${tempUnit}) incomplete.`;
         } else if (item.id === 'nc-9') {
           newCompliant = isNc9Complete;
           newNotes = isNc9Complete
-            ? `Furnace atmosphere (${meta.atmosphere}), heating method (${meta.heatingMethod}), and fan state (${meta.fanCondition}) verified.`
+            ? `Furnace atmosphere (${meta.atmosphere}), heating method (${meta.heatingMethod}), and fan state (${meta.fanCondition}) verified per § 3.5.9.`
             : 'NON-COMPLIANT: Furnace atmosphere, heating method, or fan operating parameters incomplete.';
         } else if (item.id === 'nc-10') {
           newCompliant = isNc10Complete;
           newNotes = isNc10Complete
-            ? `Formal sign-off approvals verified for Technician (${meta.technicianName}) and Quality Manager (${meta.qualityManagerName}).`
-            : 'NON-COMPLIANT: Authorised signatory names (Technician or Quality Manager) incomplete.';
+            ? `Formal sign-off approvals verified for Technician (${meta.technicianName}) and Quality Organization (${meta.qualityManagerName}) per § 3.5.15.2.`
+            : 'NON-COMPLIANT: Authorised signatory names (Technician or Quality Organization) incomplete.';
         }
 
         if (newCompliant !== item.compliant || newNotes !== item.notes) {
@@ -1010,8 +1028,12 @@ export default function App() {
                 tempUnit={tempUnit}
                 dimUnit={dimUnit}
                 onNavigateTab={(tab) => {
+                  if (tab === 'meta') setActiveStep('asset');
+                  if (tab === 'equipment') setActiveStep('traceability');
                   if (tab === 'visual') setActiveStep('dimensions');
+                  if (tab === 'channels') setActiveStep('layout');
                   if (tab === 'survey') setActiveStep('analysis');
+                  if (tab === 'nadcap') setActiveStep('compliance');
                 }}
               />
             )}
@@ -1023,7 +1045,7 @@ export default function App() {
                     <Settings className="w-4 h-4 text-cyan-400" />
                     <span>Furnace Identification & Audit Metadata</span>
                   </h3>
-                  <div className="flex items-center gap-4">
+                   <div className="flex items-center gap-3 flex-wrap">
                      <div className="flex items-center gap-1.5">
                         <span className="text-[10px] text-slate-400 font-medium">Class:</span>
                         <select
@@ -1041,7 +1063,20 @@ export default function App() {
                           onChange={(e) => setMeta({ ...meta, instrumentationType: e.target.value as InstrumentationType })}
                           className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-0.5 text-[10px] text-amber-300 font-bold focus:outline-none cursor-pointer"
                         >
-                          {['A','B','C','D'].map(t => <option key={t} value={t}>Type {t}</option>)}
+                          {(['A','B','C','D+','D','E'] as InstrumentationType[]).map(t => (
+                            <option key={t} value={t}>Type {t}</option>
+                          ))}
+                        </select>
+                     </div>
+                     <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-slate-400 font-medium">Category:</span>
+                        <select
+                          value={meta.furnaceApplication || 'Parts'}
+                          onChange={(e) => setMeta({ ...meta, furnaceApplication: e.target.value as 'Parts' | 'Raw Material' })}
+                          className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-0.5 text-[10px] text-emerald-300 font-bold focus:outline-none cursor-pointer"
+                        >
+                          <option value="Parts">Parts (Table 15)</option>
+                          <option value="Raw Material">Raw Material (Table 16)</option>
                         </select>
                      </div>
                   </div>
@@ -1081,23 +1116,47 @@ export default function App() {
                   <div><label className="block text-slate-400 mb-1">Revision</label><input type="text" value={meta.revision} onChange={(e) => setMeta({ ...meta, revision: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none" /></div>
                   <div><label className="block text-slate-400 mb-1">Furnace Equipment Tag / ID</label><input type="text" value={meta.furnaceId} onChange={(e) => setMeta({ ...meta, furnaceId: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none" /></div>
                   <div><label className="block text-slate-400 mb-1">Equipment Name / Description</label><input type="text" value={meta.furnaceName} onChange={(e) => setMeta({ ...meta, furnaceName: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none" /></div>
+                  <div><label className="block text-slate-400 mb-1">Furnace Model</label><input type="text" value={meta.furnaceModel} onChange={(e) => setMeta({ ...meta, furnaceModel: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none" /></div>
+                  <div><label className="block text-slate-400 mb-1">Furnace Serial Number</label><input type="text" value={meta.furnaceSerial} onChange={(e) => setMeta({ ...meta, furnaceSerial: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none" /></div>
+                  <div><label className="block text-slate-400 mb-1">Min Qualified Operating Temp ({tempUnit})</label><input type="number" value={meta.operatingTempMin} onChange={(e) => setMeta({ ...meta, operatingTempMin: parseFloat(e.target.value) || 0 })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none" /></div>
+                  <div><label className="block text-slate-400 mb-1">Max Qualified Operating Temp ({tempUnit})</label><input type="number" value={meta.operatingTempMax} onChange={(e) => setMeta({ ...meta, operatingTempMax: parseFloat(e.target.value) || 0 })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none" /></div>
+                  <div><label className="block text-slate-400 mb-1">Furnace Atmosphere (§ 3.5.9)</label><input type="text" placeholder="e.g. Air, Nitrogen, Vacuum, Argon" value={meta.atmosphere} onChange={(e) => setMeta({ ...meta, atmosphere: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none" /></div>
+                  <div><label className="block text-slate-400 mb-1">Heating Method</label><input type="text" placeholder="e.g. Electric Resistance, Gas Radiant" value={meta.heatingMethod} onChange={(e) => setMeta({ ...meta, heatingMethod: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none" /></div>
+                  <div><label className="block text-slate-400 mb-1">Circulation Fan Status (§ 3.5.9.5)</label><input type="text" placeholder="e.g. High Speed On / N/A" value={meta.fanCondition} onChange={(e) => setMeta({ ...meta, fanCondition: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none" /></div>
+                  <div>
+                    <label className="block text-slate-400 mb-1">Load Condition (§ 3.5.5.2)</label>
+                    <select
+                      value={meta.loadCondition}
+                      onChange={(e) => setMeta({ ...meta, loadCondition: e.target.value as SurveyMetadata['loadCondition'] })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 focus:border-cyan-500 focus:outline-none"
+                    >
+                      <option value="Empty">Empty</option>
+                      <option value="Rack">Fixture / Rack Only</option>
+                      <option value="Simulated Production Load">Simulated Production Load</option>
+                      <option value="Maximum Production Load">Actual Production Load</option>
+                    </select>
+                  </div>
                   
                   <div className="col-span-2 bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3 mt-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-amber-400" />
-                        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-300">TUS Interval Extension (AMS 2750 Table 14)</h4>
+                        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-300">TUS Interval & Frequency (AMS 2750 Rev H Table 15 / Table 16 & Table 20)</h4>
                       </div>
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input type="checkbox" checked={isExtendedInterval} onChange={(e) => setIsExtendedInterval(e.target.checked)} className="rounded border-slate-700 text-cyan-500 focus:ring-0" />
-                        <span className="text-[10px] text-slate-300">Apply Extended Interval</span>
+                        <span className="text-[10px] text-slate-300">Apply Reduced Frequency (Extended Interval)</span>
                       </label>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="text-[10px] text-slate-400 leading-relaxed">{TUS_INTERVALS[meta.furnaceClass].description}</div>
-                      <div className="bg-slate-900 border border-slate-800 p-2 rounded-lg text-center">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+                      <div className="sm:col-span-2 text-[11px] text-slate-300 leading-relaxed">
+                        {getTusIntervalInfo(meta.furnaceClass, meta.instrumentationType, meta.furnaceApplication || 'Parts').description}
+                      </div>
+                      <div className="bg-slate-900 border border-slate-800 p-2.5 rounded-lg text-center">
                         <div className="text-[9px] uppercase font-bold text-slate-500">Next TUS Due Date</div>
-                        <div className="text-sm font-bold text-cyan-300 font-mono">{calculateNextTusDueDate(meta.date, meta.furnaceClass, isExtendedInterval)}</div>
+                        <div className="text-sm font-bold text-cyan-300 font-mono">
+                          {calculateNextTusDueDate(meta.date, meta.furnaceClass, isExtendedInterval, meta.instrumentationType, meta.furnaceApplication || 'Parts')}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1178,6 +1237,7 @@ export default function App() {
                   tempUnit={tempUnit}
                   instrumentCorrection={instrument.instrumentCorrection ?? 0}
                   meta={meta}
+                  qwz={qwz}
                   onUpdateSetpoints={setSetpoints}
                   onUpdateChannels={setChannels}
                   onUpdateMeta={setMeta}

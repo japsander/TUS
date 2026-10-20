@@ -980,7 +980,7 @@ export const TestEquipmentManager: React.FC<TestEquipmentManagerProps> = ({
             </h3>
           </div>
           <span className="text-xs text-slate-400 font-mono">
-            AMS 2750 Rev H Table 1 & Table 3
+            AMS 2750 Rev H Table 1, Table 2 & Table 7
           </span>
         </div>
 

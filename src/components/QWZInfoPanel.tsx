@@ -127,7 +127,7 @@ export const QWZInfoPanel: React.FC<QWZInfoPanelProps> = ({
           <div className="flex items-center gap-2.5">
             <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
             <div className="text-amber-200">
-              <span className="font-bold">AMS 2750 Rev H Table 11 Alert: </span>
+              <span className="font-bold">AMS 2750 Rev H Table 17 Alert: </span>
               Volume is <strong>{volumeM3.toFixed(3)} m³</strong> which requires at least{' '}
               <strong className="text-white underline">{minSensors} sensors</strong> (currently {channels.length}).
             </div>
@@ -184,9 +184,9 @@ export const QWZInfoPanel: React.FC<QWZInfoPanelProps> = ({
           </div>
         </div>
 
-        {/* AMS 2750 Rev H Table 11 Sensors */}
+        {/* AMS 2750 Rev H Table 17 Sensors */}
         <div className="bg-slate-950/90 border border-slate-800/80 rounded-xl p-3 space-y-1">
-          <div className="text-slate-400 text-[11px] font-medium">AMS 2750 Table 11 Min:</div>
+          <div className="text-slate-400 text-[11px] font-medium">AMS 2750 Table 17 Min:</div>
           <div className="font-mono font-bold text-cyan-300 text-sm">
             {minSensors} Sensors Minimum
           </div>

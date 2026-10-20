@@ -155,9 +155,18 @@ export async function generateTusDocxBlob(params: {
   const { minSensors } = getMinRequiredSensors(volumeCuFt);
   const toleranceVal = CLASS_TOLERANCES[meta.furnaceClass][meta.tempUnit];
 
-  // Evaluate all setpoints
+  // Evaluate all setpoints per AMS 2750 Rev H § 3.5.14.1, § 3.5.10.2 & Table 17/18
   const setpointAnalyses = setpoints.map((sp) =>
-    evaluateSetpoint(sp, channels, meta.furnaceClass, meta.tempUnit, instrument.instrumentCorrection ?? 0)
+    evaluateSetpoint(
+      sp,
+      channels,
+      meta.furnaceClass,
+      meta.tempUnit,
+      instrument.instrumentCorrection ?? 0,
+      minSensors,
+      qwz,
+      meta.furnaceApplication || 'Parts'
+    )
   );
   const overallConformant = 
     setpointAnalyses.every((sa) => sa.passed) && 
@@ -368,7 +377,7 @@ export async function generateTusDocxBlob(params: {
       spacing: { after: 80 },
       children: [
         new TextRun({
-          text: `The thermal processing chamber and qualified working dimensions are established per AMS 2750 Rev H Section 3.4. All production parts must be contained entirely within the qualified work zone envelope during certified heat treatments.`,
+          text: `The thermal processing chamber and qualified working dimensions are established per AMS 2750 Rev H Section 3.5. All production parts must be contained entirely within the qualified work zone envelope during certified heat treatments.`,
           font: 'Arial',
           size: 18,
           color: '334155',
@@ -601,7 +610,7 @@ export async function generateTusDocxBlob(params: {
       spacing: { after: 80 },
       children: [
         new TextRun({
-          text: `In compliance with AMS 2750 Rev H Section 3.4.5 and Nadcap AC7102/8 checklist item 4.2, the physical distance of every survey thermocouple from all six internal furnace surfaces is verified and documented below.`,
+          text: `In compliance with AMS 2750 Rev H Section 3.5.10.3 and Nadcap AC7102/8 checklist item 4.2, the physical distance of every survey thermocouple from all six internal furnace surfaces is verified and documented below.`,
           font: 'Arial',
           size: 18,
           color: '334155',
@@ -655,7 +664,7 @@ export async function generateTusDocxBlob(params: {
       spacing: { after: 80 },
       children: [
         new TextRun({
-          text: `Thermocouple wire batches and test data recording equipment meet the maximum permissible error limits specified in AMS 2750 Rev H Table 1 and Table 3. All calibrations are traceable to NIST or recognized National Metrological Institutes.`,
+          text: `Thermocouple wire batches and test data recording equipment meet the maximum permissible error limits specified in AMS 2750 Rev H Table 1 and Table 7. All calibrations are traceable to NIST or recognized National Metrological Institutes.`,
           font: 'Arial',
           size: 18,
           color: '334155',
@@ -722,13 +731,13 @@ export async function generateTusDocxBlob(params: {
         new TableRow({
           children: [
             createCell('Maximum Permissible Instrument Error (MPE)', { bold: true, bg: 'F8FAFC' }),
-            createCell(`±${instrument.maxPermissibleError} ${meta.tempUnit} (Allowed Range: ±${meta.tempUnit === '°C' ? '0.6' : '1.1'} ${meta.tempUnit} per AMS 2750 Rev H Table 3)`),
+            createCell(`±${instrument.maxPermissibleError} ${meta.tempUnit} (Allowed Range: ±${meta.tempUnit === '°C' ? '0.6' : '1.1'} ${meta.tempUnit} per AMS 2750 Rev H Table 7)`),
           ],
         }),
         new TableRow({
           children: [
             createCell('Field Instrument Calibration Correction', { bold: true, bg: 'F8FAFC' }),
-            createCell(`${(instrument.instrumentCorrection ?? 0) >= 0 ? '+' : ''}${instrument.instrumentCorrection ?? 0} ${meta.tempUnit} (Arithmetically applied to all raw data per Rev H Section 3.4.15)`),
+            createCell(`${(instrument.instrumentCorrection ?? 0) >= 0 ? '+' : ''}${instrument.instrumentCorrection ?? 0} ${meta.tempUnit} (Arithmetically applied to all raw data per Rev H Section 3.5.14.1)`),
           ],
         }),
         new TableRow({
@@ -850,7 +859,7 @@ export async function generateTusDocxBlob(params: {
       spacing: { after: 120 },
       children: [
         new TextRun({
-          text: `In accordance with AMS 2750 Rev H Section 3.4.15, thermocouple correction factors and instrument calibration corrections are arithmetically applied to all raw data. The soak period began only after all survey sensors reached the minimum survey tolerance and stabilized.`,
+          text: `In accordance with AMS 2750 Rev H Section 3.5.14.1, thermocouple correction factors and instrument calibration corrections are arithmetically applied to all raw data. The soak period began only after all survey sensors reached the minimum survey tolerance and stabilized.`,
           font: 'Arial',
           size: 18,
           color: '334155',
@@ -1132,13 +1141,14 @@ export async function generateTusDocxBlob(params: {
 
     // 2. Sensor Count Failures
     if (channels.length < minSensors) {
-      failures.push(`Total sensor count (${channels.length}) is below AMS 2750 Rev H Table 11 minimum requirement (${minSensors}) for this volume.`);
+      failures.push(`Total sensor count (${channels.length}) is below AMS 2750 Rev H Table 17 minimum requirement (${minSensors}) for this volume.`);
     }
 
-    // 3. Individual Sensor Failures
+    // 3. Individual Sensor Failures (only flag as non-conformance if it violated § 3.5.10.2 / § 3.5.14.1.6)
     const manualFailed = channels.filter(ch => ch.failed);
-    if (manualFailed.length > 0) {
-      failures.push(`Technical sensor failures detected on: ${manualFailed.map(ch => `TC ${ch.channelNumber} (${ch.label})`).join(', ')}.`);
+    const hasFailureViolation = setpointAnalyses.some(sa => sa.sensorFailureNote && sa.sensorFailureNote.includes('Violation'));
+    if (manualFailed.length > 0 && hasFailureViolation) {
+      failures.push(`Sensor failure limit violation (§ 3.5.10.2 / § 3.5.14.1.6) on: ${manualFailed.map(ch => `TC ${ch.channelNumber} (${ch.label})`).join(', ')}.`);
     }
 
     // 4. Checklist Failures

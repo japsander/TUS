@@ -629,11 +629,11 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
                   </span>
                 </div>
 
-                {/* Step-by-Step AMS 2750 Rev H Table 11 Mathematical Derivation */}
+                {/* Step-by-Step AMS 2750 Rev H Table 17 Mathematical Derivation */}
                 <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 text-[11px] space-y-1.5 font-mono text-slate-300">
                   <div className="text-cyan-400 font-bold flex items-center gap-1.5">
                     <Info className="w-3.5 h-3.5" />
-                    <span>AMS 2750 Rev H Table 11 Mathematical Derivation:</span>
+                    <span>AMS 2750 Rev H Table 17 Mathematical Derivation:</span>
                   </div>
                   <div>• Work Zone Volume = {qwz.length} × {qwz.width} × {qwz.height} {dimUnit} = <strong className="text-white">{volumeM3.toFixed(3)} m³</strong> ({volumeCuFt.toFixed(1)} ft³)</div>
                   <div>• Baseline Requirement: First 6.4 m³ (225 ft³) = <strong className="text-white">9 sensors</strong> (8 corners + 1 center)</div>
@@ -644,10 +644,10 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
                     • Additional Sensors: ⌈{(Math.max(0, volumeM3 - 6.4)).toFixed(2)} m³ / 2.83 m³⌉ = <strong className="text-cyan-300">{additionalSensors} additional</strong> (1 per 2.83 m³ / 100 ft³ excess)
                   </div>
                   <div className="text-emerald-400 pt-1 font-bold border-t border-slate-800">
-                    Total Required Minimum = 9 + {additionalSensors} = {minSensors} Sensors (AMS 2750 Rev H Table 11)
+                    Total Required Minimum = {baselineSensors} + {additionalSensors} = {minSensors} Sensors (AMS 2750 Rev H Table 17)
                   </div>
                   <div className="text-slate-400 font-sans text-[11px] pt-1">
-                    <em>Aerospace Engineering Note:</em> While <strong>{minSensors} sensors</strong> is 100% compliant with AMS 2750 Rev H Table 11, placing an odd number across a 6-sided box furnace creates asymmetry. Most Nadcap-accredited heat treaters use <strong>14 sensors</strong> (symmetrical 6 faces).
+                    <em>Aerospace Engineering Note:</em> While <strong>{minSensors} sensors</strong> is 100% compliant with AMS 2750 Rev H Table 17, placing an odd number across a 6-sided box furnace creates asymmetry. Most Nadcap-accredited heat treaters use <strong>14 sensors</strong> (symmetrical 6 faces).
                   </div>
                 </div>
 
@@ -672,9 +672,9 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
               <button
                 onClick={() => onFitSensorsToQWZ(minSensors)}
                 className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 font-mono font-medium text-xs border border-slate-700 cursor-pointer"
-                title={`Generate minimum ${minSensors} sensor pattern required by AMS 2750 Rev H Table 11`}
+                title={`Generate minimum ${minSensors} sensor pattern required by AMS 2750 Rev H Table 17`}
               >
-                Set {minSensors} Sensors (Table 11 Min)
+                Set {minSensors} Sensors (Table 17 Min)
               </button>
 
               <button
@@ -829,7 +829,7 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
             )}
             
             <div className="text-[10px] text-slate-500 italic">
-              AMS 2750H § 3.4.5: Sensor placement shall be within the Qualified Work Zone.
+              AMS 2750H § 3.5.10.3.1: TUS sensors shall define the outside perimeter and center of the Qualified Work Zone.
             </div>
           </div>
           

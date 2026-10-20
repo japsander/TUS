@@ -7,8 +7,9 @@ import {
   SurveyMetadata,
   TusTrendData,
   DetectedDwellPeriod,
+  QualifiedWorkZone,
 } from '../types/tus';
-import { CLASS_TOLERANCES, evaluateSetpoint } from '../utils/ams2750';
+import { CLASS_TOLERANCES, evaluateSetpoint, calculateVolumeInM3, calculateVolumeInCuFt, getMinRequiredSensors } from '../utils/ams2750';
 import {
   Thermometer,
   Plus,
@@ -19,6 +20,7 @@ import {
   Clock,
   TrendingUp,
   Upload,
+  AlertTriangle,
 } from 'lucide-react';
 import { CsvTusImportModal } from './CsvTusImportModal';
 
@@ -29,6 +31,7 @@ interface SurveyDataSectionProps {
   tempUnit: TempUnit;
   instrumentCorrection: number;
   meta: SurveyMetadata;
+  qwz?: QualifiedWorkZone;
   onUpdateSetpoints: (setpoints: SurveySetpoint[]) => void;
   onUpdateChannels: (channels: ThermocoupleChannel[]) => void;
   onUpdateMeta?: (meta: SurveyMetadata) => void;
@@ -43,6 +46,7 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
   tempUnit,
   instrumentCorrection,
   meta,
+  qwz,
   onUpdateSetpoints,
   onUpdateChannels,
   onUpdateMeta,
@@ -130,9 +134,22 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
 
 
 
+  const minSensorsTable17 = qwz
+    ? getMinRequiredSensors(calculateVolumeInCuFt(qwz, meta.dimUnit), calculateVolumeInM3(qwz, meta.dimUnit)).minSensors
+    : 9;
+
   const currentSetpoint = setpoints.find((s) => s.id === activeSetpointId) || setpoints[0];
   const analysis = currentSetpoint
-    ? evaluateSetpoint(currentSetpoint, channels, furnaceClass, tempUnit, instrumentCorrection)
+    ? evaluateSetpoint(
+        currentSetpoint,
+        channels,
+        furnaceClass,
+        tempUnit,
+        instrumentCorrection,
+        minSensorsTable17,
+        qwz,
+        meta.furnaceApplication || 'Parts'
+      )
     : null;
 
   const handleApplyCsvImport = (
@@ -184,7 +201,16 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
       <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
           {setpoints.map((sp, idx) => {
-            const spAnalysis = evaluateSetpoint(sp, channels, furnaceClass, tempUnit, instrumentCorrection);
+            const spAnalysis = evaluateSetpoint(
+              sp,
+              channels,
+              furnaceClass,
+              tempUnit,
+              instrumentCorrection,
+              minSensorsTable17,
+              qwz,
+              meta.furnaceApplication || 'Parts'
+            );
             const isActive = sp.id === activeSetpointId;
             return (
               <button
@@ -352,7 +378,7 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
 
                 <div className="col-span-2 border-t border-slate-800 pt-3 mt-1">
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
-                    Furnace Control Instrument (AMS 2750 Rev H § 3.5.15.i)
+                    Furnace Control Instrument (AMS 2750 Rev H § 3.5.13.3.i & Table 18)
                   </label>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
@@ -382,7 +408,9 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] text-slate-400 mb-1">Instrument Offset</label>
+                      <label className="block text-[10px] text-slate-400 mb-1">
+                        Offset (Max ±{analysis.offsetCompliance?.maxAllowedOffset ?? 10}{tempUnit})
+                      </label>
                       <input
                         type="number"
                         step="0.1"
@@ -392,7 +420,11 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                             controlOffset: parseFloat(e.target.value) || 0,
                           })
                         }
-                        className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-white font-mono focus:border-cyan-500 focus:outline-none"
+                        className={`w-full bg-slate-950 border rounded px-2 py-1 text-[11px] font-mono focus:outline-none ${
+                          analysis.offsetCompliance && !analysis.offsetCompliance.isOffsetCompliant
+                            ? 'border-red-500 text-red-400'
+                            : 'border-slate-800 text-white focus:border-cyan-500'
+                        }`}
                       />
                     </div>
                   </div>
@@ -462,8 +494,20 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                 </div>
               </div>
 
-              <div className="text-xs text-slate-400 bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 leading-relaxed">
-                <span className="font-semibold text-slate-200">AMS 2750 Rev H Rule:</span> Corrected Temperature = Raw Reading + TC Correction Factor + Instrument Calibration Correction. Note: Maximum Permissible Error (MPE) is used for instrument compliance validation only and is not applied to calculations. Every survey channel must remain within [{analysis.minAllowed} {tempUnit}, {analysis.maxAllowed} {tempUnit}] throughout the verified soak interval.
+              <div className="text-xs text-slate-400 bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 leading-relaxed space-y-1.5">
+                <div>
+                  <span className="font-semibold text-slate-200">AMS 2750 Rev H § 3.5.14.1 Rule:</span> Corrected Temperature = Raw Reading + TC Correction Factor + Instrument Calibration Correction. Every active TUS & furnace sensor must remain within [{analysis.minAllowed} {tempUnit}, {analysis.maxAllowed} {tempUnit}] throughout the ≥30-minute soak, and at no time may any sensor exceed {analysis.maxAllowed} {tempUnit} (no overshoot above upper tolerance per § 3.5.10.6).
+                </div>
+                {analysis.sensorFailureNote && (
+                  <div className={`p-2 rounded-lg border text-[11px] font-medium flex items-start gap-2 ${
+                    analysis.passed
+                      ? 'bg-amber-950/50 border-amber-700/70 text-amber-200'
+                      : 'bg-red-950/60 border-red-700/80 text-red-200'
+                  }`}>
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+                    <span>{analysis.sensorFailureNote}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -471,7 +515,7 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
           {/* Detailed Channel Readings & Corrections Table */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-[760px]">
+              <table className="w-full text-left border-collapse min-w-[820px]">
                 <thead>
                   <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                     <th className="py-3 px-3 w-16 text-center">TC #</th>
@@ -480,6 +524,7 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                     <th className="py-3 px-3 text-center text-amber-400">TC Correction ({tempUnit})</th>
                     <th className="py-3 px-3 text-center font-bold text-cyan-400">Corrected Temp ({tempUnit})</th>
                     <th className="py-3 px-3 text-center">Delta From Target</th>
+                    <th className="py-3 px-3 text-center w-28" title="AMS 2750 Rev H § 3.5.10.2 Open/Broken Sensor Failure Toggle">Sensor State</th>
                     <th className="py-3 px-3 text-center w-24">Result</th>
                   </tr>
                 </thead>
@@ -487,7 +532,13 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                   {analysis.channelResults.map((cr) => (
                     <tr
                       key={cr.channelId}
-                      className={cr.inTolerance ? 'hover:bg-slate-800/40' : 'bg-red-950/20'}
+                      className={
+                        cr.failed
+                          ? 'bg-slate-950/70 opacity-65'
+                          : cr.inTolerance
+                          ? 'hover:bg-slate-800/40'
+                          : 'bg-red-950/20'
+                      }
                     >
                       <td className="py-2.5 px-3 text-center font-bold text-slate-300">
                         {cr.channelNumber}
@@ -497,40 +548,71 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                         <input
                           type="number"
                           step="0.1"
+                          disabled={cr.failed}
                           value={cr.rawReading}
                           onChange={(e) =>
                             handleReadingChange(currentSetpoint.id, cr.channelId, e.target.value)
                           }
-                          className="w-24 text-center bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-cyan-500 focus:outline-none"
+                          className="w-24 text-center bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-cyan-500 focus:outline-none disabled:opacity-40"
                         />
                       </td>
                       <td className="py-2.5 px-3 text-center">
                         <input
                           type="number"
                           step="0.05"
+                          disabled={cr.failed}
                           value={cr.tcCorrection}
                           onChange={(e) =>
                             handleCorrectionChange(cr.channelId, currentSetpoint.id, e.target.value)
                           }
-                          className="w-20 text-center bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-amber-300 focus:border-amber-500 focus:outline-none"
+                          className="w-20 text-center bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-amber-300 focus:border-amber-500 focus:outline-none disabled:opacity-40"
                         />
                       </td>
                       <td className="py-2.5 px-3 text-center font-bold text-cyan-300 text-sm">
-                        {cr.correctedTemp.toFixed(1)}
+                        {cr.failed ? 'OPEN / FAIL' : cr.correctedTemp.toFixed(1)}
                       </td>
                       <td className="py-2.5 px-3 text-center text-slate-300">
-                        {cr.deltaFromTarget >= 0 ? `+${cr.deltaFromTarget.toFixed(1)}` : cr.deltaFromTarget.toFixed(1)}
+                        {cr.failed
+                          ? '—'
+                          : cr.deltaFromTarget >= 0
+                          ? `+${cr.deltaFromTarget.toFixed(1)}`
+                          : cr.deltaFromTarget.toFixed(1)}
                       </td>
                       <td className="py-2.5 px-3 text-center">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${
-                            cr.inTolerance
-                              ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/60'
-                              : 'bg-red-950 text-red-400 border border-red-800/60'
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = channels.map((ch) =>
+                              ch.id === cr.channelId ? { ...ch, failed: !ch.failed } : ch
+                            );
+                            onUpdateChannels(updated);
+                          }}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                            cr.failed
+                              ? 'bg-amber-600 text-slate-950'
+                              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                           }`}
+                          title="Toggle broken/open circuit sensor state per AMS 2750 Rev H § 3.5.10.2 & § 3.5.14.1.6"
                         >
-                          {cr.inTolerance ? 'PASS' : 'FAIL'}
-                        </span>
+                          {cr.failed ? 'Failed (Open)' : 'Active'}
+                        </button>
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        {cr.failed ? (
+                          <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800/60">
+                            EXCLUDED (§3.5.10.2)
+                          </span>
+                        ) : (
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${
+                              cr.inTolerance
+                                ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/60'
+                                : 'bg-red-950 text-red-400 border border-red-800/60'
+                            }`}
+                          >
+                            {cr.inTolerance ? 'PASS' : 'FAIL'}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}

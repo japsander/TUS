@@ -18,7 +18,7 @@ export const CLASS_TOLERANCES: Record<FurnaceClass, { '°F': number; '°C': numb
 };
 
 /**
- * Calculates work zone volume in cubic metres (UK/European standard for AMS 2750 Rev H Table 11)
+ * Calculates work zone volume in cubic metres (AMS 2750 Rev H Table 17)
  */
 export function calculateVolumeInM3(qwz: QualifiedWorkZone, dimUnit: DimUnit): number {
   if (dimUnit === 'mm') {
@@ -43,8 +43,11 @@ export function calculateVolumeInCuFt(qwz: QualifiedWorkZone, dimUnit: DimUnit):
 }
 
 /**
- * AMS 2750 Rev H Table 11: Minimum number of TUS sensors
- * Defined in metric (m³) and imperial (ft³)
+ * AMS 2750 Rev H Table 17: Minimum Number of TUS Sensors (Volumetric Method)
+ * Defined in metric (m³) and imperial (ft³):
+ * - Less than 225 ft³ (6.4 m³): 9 sensors (8 corners + 1 center)
+ * - 225 to 3,000 ft³ (6.4 to 85 m³): 9 + 1 for each additional 100 ft³ (2.83 m³) or fraction thereof
+ * - Greater than 3,000 ft³ (85 m³): 37 + 1 for each additional 250 ft³ (7.08 m³) or fraction thereof
  */
 export function getMinRequiredSensors(
   volumeCuFt: number,
@@ -64,8 +67,8 @@ export function getMinRequiredSensors(
   if (volM3 < 6.4) {
     return {
       minSensors: 9,
-      ruleText: `AMS 2750 Rev H Table 11: Work zone volume ${volM3.toFixed(2)} m³ (< 6.4 m³ / 225 ft³) requires a minimum of 9 sensors (8 corners + 1 center).`,
-      formulaBreakdown: `Volume ${volM3.toFixed(2)} m³ (${volCuFt.toFixed(1)} ft³) is below 6.4 m³ (225 ft³), requiring the baseline 9 sensors (8 corners + 1 geometric center).`,
+      ruleText: `AMS 2750 Rev H Table 17: Work zone volume ${volM3.toFixed(2)} m³ (< 6.4 m³ / 225 ft³) requires a minimum of 9 sensors (8 corners + 1 geometric center).`,
+      formulaBreakdown: `Volume ${volM3.toFixed(2)} m³ (${volCuFt.toFixed(1)} ft³) is below 6.4 m³ (225 ft³), requiring the baseline 9 sensors (8 corners + 1 geometric center) per AMS 2750 Rev H Table 17 & § 3.5.10.3.1.`,
       volumeM3Val: volM3,
       volumeCuFtVal: volCuFt,
       baselineSensors: 9,
@@ -77,8 +80,8 @@ export function getMinRequiredSensors(
     const minSensors = Math.min(37, 9 + additional);
     return {
       minSensors,
-      ruleText: `AMS 2750 Rev H Table 11: Volume ${volM3.toFixed(2)} m³ requires 9 + 1 per 2.83 m³ excess = ${minSensors} sensors.`,
-      formulaBreakdown: `Baseline 9 sensors (for first 6.4 m³ / 225 ft³) + ${additional} additional sensors (1 per 2.83 m³ / 100 ft³ of excess volume: ${excessM3.toFixed(2)} m³) = ${minSensors} Sensors Minimum per AMS 2750 Rev H Table 11. (Note: Many aerospace heat treaters use 14 or 21 sensors for balanced face symmetry).`,
+      ruleText: `AMS 2750 Rev H Table 17: Volume ${volM3.toFixed(2)} m³ requires 9 + 1 per 2.83 m³ (100 ft³) excess = ${minSensors} sensors.`,
+      formulaBreakdown: `Baseline 9 sensors (for first 6.4 m³ / 225 ft³) + ${additional} additional sensors (1 per 2.83 m³ / 100 ft³ or fraction thereof of excess volume: ${excessM3.toFixed(2)} m³) = ${minSensors} Sensors Minimum per AMS 2750 Rev H Table 17.`,
       volumeM3Val: volM3,
       volumeCuFtVal: volCuFt,
       baselineSensors: 9,
@@ -90,8 +93,8 @@ export function getMinRequiredSensors(
     const minSensors = 37 + additional;
     return {
       minSensors,
-      ruleText: `AMS 2750 Rev H Table 11: Volume ${volM3.toFixed(2)} m³ requires 37 + 1 per 7.08 m³ = ${minSensors} sensors.`,
-      formulaBreakdown: `Baseline 37 sensors (for up to 85 m³ / 3000 ft³) + ${additional} additional sensors (1 per 7.08 m³ / 250 ft³ excess) = ${minSensors} Sensors Minimum.`,
+      ruleText: `AMS 2750 Rev H Table 17: Volume ${volM3.toFixed(2)} m³ requires 37 + 1 per 7.08 m³ (250 ft³) excess = ${minSensors} sensors.`,
+      formulaBreakdown: `Baseline 37 sensors (for up to 85 m³ / 3000 ft³) + ${additional} additional sensors (1 per 7.08 m³ / 250 ft³ or fraction thereof excess) = ${minSensors} Sensors Minimum per AMS 2750 Rev H Table 17.`,
       volumeM3Val: volM3,
       volumeCuFtVal: volCuFt,
       baselineSensors: 37,
@@ -756,6 +759,12 @@ export interface SetpointAnalysisResult {
   minSensorLabel: string;
   maxSensorLabel: string;
   sensorFailureNote?: string;
+  offsetCompliance?: {
+    offsetApplied: number;
+    maxAllowedOffset: number;
+    isOffsetCompliant: boolean;
+    ruleRef: string;
+  };
   channelResults: Array<{
     channelId: string;
     channelNumber: number;
@@ -769,16 +778,124 @@ export interface SetpointAnalysisResult {
   }>;
 }
 
+/**
+ * AMS 2750 Rev H Table 18: Maximum Allowed Offset (Magnitude of Temperature Controller Offset Adjustment)
+ * Class 1: 5°F / 3°C
+ * Class 2: 10°F / 6°C (Parts) or 5°F / 3°C (Raw Material)
+ * Class 3: 10°F / 6°C (Parts) or 8°F / 4°C (Raw Material)
+ * Class 4: 10°F / 6°C
+ * Class 5: 13°F / 7°C
+ * Class 6: 25°F / 14°C
+ */
+export function getMaxAllowedOffset(
+  furnaceClass: FurnaceClass,
+  tempUnit: TempUnit,
+  furnaceApplication: 'Parts' | 'Raw Material' = 'Parts'
+): number {
+  const isRaw = furnaceApplication === 'Raw Material';
+  if (tempUnit === '°F') {
+    switch (furnaceClass) {
+      case 1: return 5;
+      case 2: return isRaw ? 5 : 10;
+      case 3: return isRaw ? 8 : 10;
+      case 4: return 10;
+      case 5: return 13;
+      case 6: return 25;
+    }
+  } else {
+    switch (furnaceClass) {
+      case 1: return 3;
+      case 2: return isRaw ? 3 : 6;
+      case 3: return isRaw ? 4 : 6;
+      case 4: return 6;
+      case 5: return 7;
+      case 6: return 14;
+    }
+  }
+}
+
+/**
+ * Evaluates whether two corner sensors are adjacent on the QWZ box (share 2 of 3 corner axes)
+ * per AMS 2750 Rev H § 3.5.10.2 ("Failed sensors are not in adjacent corners").
+ */
+function findAdjacentFailedCorners(
+  failedChannels: ThermocoupleChannel[],
+  qwz?: QualifiedWorkZone
+): Array<[ThermocoupleChannel, ThermocoupleChannel]> {
+  if (failedChannels.length < 2) return [];
+
+  // Identify corner coordinates either via QWZ or via normalized ux, uy, uz (0 or 1)
+  const cornerFailures = failedChannels.filter((ch) => {
+    if (qwz) {
+      const tolL = Math.max(0.5, qwz.length * 0.05);
+      const tolH = Math.max(0.5, qwz.height * 0.05);
+      const tolW = Math.max(0.5, qwz.width * 0.05);
+      const isXCorner = Math.abs(ch.x - qwz.offsetFront) <= tolL || Math.abs(ch.x - (qwz.offsetFront + qwz.length)) <= tolL;
+      const isYCorner = Math.abs(ch.y - qwz.offsetFloor) <= tolH || Math.abs(ch.y - (qwz.offsetFloor + qwz.height)) <= tolH;
+      const isZCorner = Math.abs(ch.z - qwz.offsetLeft) <= tolW || Math.abs(ch.z - (qwz.offsetLeft + qwz.width)) <= tolW;
+      return isXCorner && isYCorner && isZCorner;
+    }
+    const ux = ch.ux ?? -1;
+    const uy = ch.uy ?? -1;
+    const uz = ch.uz ?? -1;
+    const isCornerCoord = (v: number) => Math.abs(v - 0) <= 0.05 || Math.abs(v - 1) <= 0.05;
+    return (isCornerCoord(ux) && isCornerCoord(uy) && isCornerCoord(uz)) || ch.label.toLowerCase().includes('corner');
+  });
+
+  const adjacentPairs: Array<[ThermocoupleChannel, ThermocoupleChannel]> = [];
+  for (let i = 0; i < cornerFailures.length; i++) {
+    for (let j = i + 1; j < cornerFailures.length; j++) {
+      const a = cornerFailures[i];
+      const b = cornerFailures[j];
+      if (qwz) {
+        const sameX = Math.abs(a.x - b.x) <= Math.max(1, qwz.length * 0.1);
+        const sameY = Math.abs(a.y - b.y) <= Math.max(1, qwz.height * 0.1);
+        const sameZ = Math.abs(a.z - b.z) <= Math.max(1, qwz.width * 0.1);
+        const sharedAxes = (sameX ? 1 : 0) + (sameY ? 1 : 0) + (sameZ ? 1 : 0);
+        // Two corners are adjacent along a QWZ edge if they share 2 axes and differ on 1 axis
+        if (sharedAxes >= 2) {
+          adjacentPairs.push([a, b]);
+        }
+      } else {
+        const uxA = Math.round(a.ux ?? 0);
+        const uyA = Math.round(a.uy ?? 0);
+        const uzA = Math.round(a.uz ?? 0);
+        const uxB = Math.round(b.ux ?? 0);
+        const uyB = Math.round(b.uy ?? 0);
+        const uzB = Math.round(b.uz ?? 0);
+        const shared = (uxA === uxB ? 1 : 0) + (uyA === uyB ? 1 : 0) + (uzA === uzB ? 1 : 0);
+        if (shared >= 2) {
+          adjacentPairs.push([a, b]);
+        }
+      }
+    }
+  }
+  return adjacentPairs;
+}
+
 export function evaluateSetpoint(
   setpoint: SurveySetpoint,
   channels: ThermocoupleChannel[],
   furnaceClass: FurnaceClass,
   tempUnit: TempUnit,
-  instrumentCorrection: number = 0.0
+  instrumentCorrection: number = 0.0,
+  minRequiredSensorsFromTable17: number = 9,
+  qwz?: QualifiedWorkZone,
+  furnaceApplication: 'Parts' | 'Raw Material' = 'Parts'
 ): SetpointAnalysisResult {
   const tol = CLASS_TOLERANCES[furnaceClass][tempUnit];
   const minAllowed = setpoint.targetTemp - tol;
   const maxAllowed = setpoint.targetTemp + tol;
+
+  const maxAllowedOffset = getMaxAllowedOffset(furnaceClass, tempUnit, furnaceApplication);
+  const offsetApplied = Math.abs(setpoint.controlOffset ?? 0);
+  const isOffsetCompliant = offsetApplied <= maxAllowedOffset;
+  const offsetCompliance = {
+    offsetApplied: setpoint.controlOffset ?? 0,
+    maxAllowedOffset,
+    isOffsetCompliant,
+    ruleRef: `AMS 2750 Rev H Table 18 & § 3.2.5.2 (Max ±${maxAllowedOffset}${tempUnit} for Class ${furnaceClass} ${furnaceApplication})`,
+  };
 
   if (!channels || channels.length === 0) {
     return {
@@ -796,14 +913,37 @@ export function evaluateSetpoint(
       minSensorLabel: 'N/A',
       maxSensorLabel: 'N/A',
       sensorFailureNote: 'No thermocouple channels configured.',
+      offsetCompliance,
       channelResults: [],
     };
   }
 
   const failedChannels = channels.filter((ch) => ch.failed);
   const validChannels = channels.filter((ch) => !ch.failed);
-  const minRequired = 9; // Minimum baseline sensors per AMS 2750 Table 11
-  const hasValidCount = validChannels.length >= minRequired;
+  const minRequired = Math.max(9, minRequiredSensorsFromTable17);
+
+  // AMS 2750 Rev H § 3.5.10.2 & § 3.5.14.1.6 Sensor Failure Evaluation:
+  // 1. No permanent furnace control or recording sensor can fail (§ 3.5.14.1.6)
+  const failedControlSensors = failedChannels.filter((ch) => ch.isControlSensor);
+  // 2. When 9 TUS sensors are used, no more than 1 TUS sensor may fail.
+  //    When > 9 TUS sensors are used, no more than 10% (rounded down to integer, or exact 10%) of total TUS sensors used may fail (§ 3.5.10.2),
+  //    AND total remaining valid TUS sensors must be >= minimum required in Table 17.
+  const maxFailedAllowedByPercent = channels.length === 9 ? 1 : Math.floor(channels.length * 0.10);
+  const exceedsPercentFailureLimit = channels.length > 9
+    ? failedChannels.length > maxFailedAllowedByPercent
+    : failedChannels.length > 1;
+  // Wait: per § 3.5.10.2: "When 9 TUS sensors are used, no more than 1 TUS sensor may fail. When more than 9 TUS sensors are used, the number of failed TUS sensors shall not result in less than the minimum required in Table 17 or 10% of the number of TUS sensors used, whichever is greater."
+  // Note: If 9 sensors are used for a <225 ft³ zone (Table 17 min = 9), § 3.5.10.2 explicitly allows 1 sensor to fail (leaving 8 active) as long as it's not a control sensor!
+  // When > 9 sensors are used:
+  // - Remaining valid sensors must be >= minRequired (Table 17), AND
+  // - Number of failed sensors must not exceed 10% of total sensors used (e.g. for 36 sensors, 10% = 3.6 -> max 3 failed sensors, provided 36 - 3 = 33 >= Table 17 min).
+  const hasValidRemainingCount = channels.length === 9
+    ? failedChannels.length <= 1
+    : (validChannels.length >= minRequired && !exceedsPercentFailureLimit);
+
+  // 3. Failed sensors are not in adjacent corners (§ 3.5.10.2)
+  const adjacentFailedCornerPairs = findAdjacentFailedCorners(failedChannels, qwz);
+  const hasAdjacentCornerFailure = adjacentFailedCornerPairs.length > 0;
 
   let minCorrected = Infinity;
   let maxCorrected = -Infinity;
@@ -846,23 +986,60 @@ export function evaluateSetpoint(
   const evaluationChannels = validChannels.length > 0 ? validChannels : channels;
   const meanCorrected = evaluationChannels.length > 0 ? Math.round((sumCorrected / evaluationChannels.length) * 10) / 10 : setpoint.targetTemp;
   const spread = Math.round((maxCorrected - minCorrected) * 10) / 10;
+  // AMS 2750 Rev H § 3.5.10.6 & § 3.5.14.1.2: At no time shall any sensor reading exceed the upper TUS tolerance!
   const overshootPassed = setpoint.maxOvershootObserved <= setpoint.targetTemp + tol;
   
   const allValidPassed = validChannels.length > 0 
     ? channelResults.filter(c => !c.failed).every(c => c.inTolerance)
     : channelResults.every(c => c.inTolerance);
 
-  let passed = allValidPassed && overshootPassed;
+  let passed = allValidPassed && overshootPassed && isOffsetCompliant;
   let sensorFailureNote: string | undefined;
 
   if (failedChannels.length > 0) {
-    if (hasValidCount && allValidPassed && overshootPassed) {
-      passed = true;
-      sensorFailureNote = `AMS 2750 Rev H Sensor Failure Provision Note: ${failedChannels.length} sensor(s) experienced failure during TUS (${failedChannels.map(c => c.label).join(', ')}). Remaining active valid sensor count (${validChannels.length}) satisfies AMS 2750 Rev H Table 11 minimum requirements. Per Rev H allowances, survey is certified as PASS.`;
-    } else if (!hasValidCount) {
-      passed = false;
-      sensorFailureNote = `AMS 2750 Rev H Sensor Failure Violation: ${failedChannels.length} sensor(s) failed, leaving only ${validChannels.length} valid sensors, which is below the minimum Table 11 requirement (${minRequired}). Survey FAILED.`;
+    const failureViolations: string[] = [];
+    if (failedControlSensors.length > 0) {
+      failureViolations.push(
+        `Permanent furnace control/recording sensor(s) failed (${failedControlSensors.map(c => `TC ${c.channelNumber}`).join(', ')}) — prohibited by § 3.5.14.1.6`
+      );
     }
+    if (hasAdjacentCornerFailure) {
+      const pairStr = adjacentFailedCornerPairs.map(([a, b]) => `TC ${a.channelNumber} & TC ${b.channelNumber}`).join('; ');
+      failureViolations.push(
+        `Failed sensors are in adjacent corners (${pairStr}) — prohibited by § 3.5.10.2`
+      );
+    }
+    if (!hasValidRemainingCount) {
+      if (channels.length === 9 && failedChannels.length > 1) {
+        failureViolations.push(
+          `${failedChannels.length} sensors failed in a 9-sensor survey (maximum 1 failed sensor allowed per § 3.5.10.2)`
+        );
+      } else {
+        if (exceedsPercentFailureLimit) {
+          failureViolations.push(
+            `${failedChannels.length} sensors failed, exceeding the maximum 10% failure allowance (${maxFailedAllowedByPercent} max for ${channels.length} sensors per § 3.5.10.2)`
+          );
+        }
+        if (validChannels.length < minRequired) {
+          failureViolations.push(
+            `Remaining active valid sensors (${validChannels.length}) dropped below the AMS 2750 Rev H Table 17 minimum requirement (${minRequired} sensors for this work zone volume)`
+          );
+        }
+      }
+    }
+
+    if (failureViolations.length === 0 && allValidPassed && overshootPassed && isOffsetCompliant) {
+      passed = true;
+      sensorFailureNote = `AMS 2750 Rev H § 3.5.10.2 & § 3.5.14.1.6 Sensor Failure Provision: ${failedChannels.length} TUS sensor(s) experienced open/broken failure (${failedChannels.map(c => `TC ${c.channelNumber} - ${c.label}`).join(', ')}). Active valid sensors (${validChannels.length}/${channels.length}) satisfy Table 17 minimum (${minRequired}) and ≤10% failure limit (${maxFailedAllowedByPercent} max), no adjacent corners failed, and no control sensor failed. Survey is certified as PASS.`;
+    } else if (failureViolations.length > 0) {
+      passed = false;
+      sensorFailureNote = `AMS 2750 Rev H § 3.5.10.2 / § 3.5.14.1.6 Sensor Failure Violation: ${failureViolations.join(' | ')}. Survey FAILED.`;
+    } else {
+      passed = false;
+      sensorFailureNote = `AMS 2750 Rev H Evaluation Note: ${failedChannels.length} sensor(s) marked failed, and one or more active sensors or parameters (overshoot/offset) exceeded tolerance. Survey FAILED.`;
+    }
+  } else if (!isOffsetCompliant) {
+    sensorFailureNote = `AMS 2750 Rev H Table 18 Offset Violation: Applied control offset (${setpoint.controlOffset}${tempUnit}) exceeds maximum allowed ±${maxAllowedOffset}${tempUnit} for Class ${furnaceClass} (${furnaceApplication}). Survey FAILED.`;
   }
 
   return {
@@ -880,6 +1057,7 @@ export function evaluateSetpoint(
     minSensorLabel: minSensor || 'N/A',
     maxSensorLabel: maxSensor || 'N/A',
     sensorFailureNote,
+    offsetCompliance,
     channelResults,
   };
 }

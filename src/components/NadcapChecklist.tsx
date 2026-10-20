@@ -248,7 +248,7 @@ export const NadcapChecklist: React.FC<NadcapChecklistProps> = ({
 
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">
-              Max Permissible Error (AMS 2750 Table 3)
+              Max Permissible Error (AMS 2750 Table 7)
             </label>
             <div className="relative">
               <input
