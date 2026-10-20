@@ -1316,3 +1316,78 @@ export function evaluateSetpoint(
   };
 }
 
+export interface RecommendedClassResult {
+  bestAchievableClass: FurnaceClass | null;
+  currentClassPassed: boolean;
+  canUpgrade: boolean;
+  canDowngrade: boolean;
+  classSummaries: Record<FurnaceClass, { passed: boolean; tolerance: number; minAllowed: number; maxAllowed: number; failureCount: number }>;
+}
+
+/**
+ * Automatically evaluates TUS setpoints against all Furnace Classes (1 through 6)
+ * to determine the optimal AMS 2750 Rev H furnace classification.
+ */
+export function getRecommendedFurnaceClass(
+  setpoints: SurveySetpoint[],
+  channels: ThermocoupleChannel[],
+  currentClass: FurnaceClass,
+  tempUnit: TempUnit,
+  instrumentCorrection: number = 0.0,
+  minRequiredSensors: number = 9,
+  qwz?: QualifiedWorkZone,
+  furnaceApplication: 'Parts' | 'Raw Material' = 'Parts'
+): RecommendedClassResult {
+  const classes: FurnaceClass[] = [1, 2, 3, 4, 5, 6];
+  const classSummaries: Record<FurnaceClass, { passed: boolean; tolerance: number; minAllowed: number; maxAllowed: number; failureCount: number }> = {} as any;
+
+  let bestAchievableClass: FurnaceClass | null = null;
+
+  for (const fc of classes) {
+    let allSetpointsPassed = true;
+    let totalFailures = 0;
+    const tol = CLASS_TOLERANCES[fc][tempUnit];
+
+    for (const sp of setpoints) {
+      const res = evaluateSetpoint(
+        sp,
+        channels,
+        fc,
+        tempUnit,
+        instrumentCorrection,
+        minRequiredSensors,
+        qwz,
+        furnaceApplication
+      );
+      if (!res.passed) {
+        allSetpointsPassed = false;
+        totalFailures += res.channelResults.filter((cr) => !cr.inTolerance).length;
+      }
+    }
+
+    classSummaries[fc] = {
+      passed: allSetpointsPassed,
+      tolerance: tol,
+      minAllowed: setpoints.length > 0 ? Math.min(...setpoints.map((s) => s.targetTemp)) - tol : 0,
+      maxAllowed: setpoints.length > 0 ? Math.max(...setpoints.map((s) => s.targetTemp)) + tol : 0,
+      failureCount: totalFailures,
+    };
+
+    if (allSetpointsPassed && bestAchievableClass === null) {
+      bestAchievableClass = fc;
+    }
+  }
+
+  const currentClassPassed = classSummaries[currentClass]?.passed ?? false;
+  const canUpgrade = bestAchievableClass !== null && bestAchievableClass < currentClass;
+  const canDowngrade = !currentClassPassed && bestAchievableClass !== null && bestAchievableClass > currentClass;
+
+  return {
+    bestAchievableClass,
+    currentClassPassed,
+    canUpgrade,
+    canDowngrade,
+    classSummaries,
+  };
+}
+

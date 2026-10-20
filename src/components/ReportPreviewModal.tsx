@@ -335,6 +335,9 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
                   <strong className="text-slate-800">Section 8:</strong> Official Quality Authorization & Signature Blocks (Technician, QA Manager, Level 3 Authority)
                 </li>
               </ul>
+              <p className="mt-4 pt-2 border-t border-slate-200 text-slate-800 font-bold italic">
+                Raw data logs containing 1-minute interval readings for all TUS sensors are stored electronically and available for auditor review upon request.
+              </p>
             </div>
           </div>
         </div>

@@ -9,7 +9,7 @@ import {
   DetectedDwellPeriod,
   QualifiedWorkZone,
 } from '../types/tus';
-import { CLASS_TOLERANCES, evaluateSetpoint, calculateVolumeInM3, calculateVolumeInCuFt, getMinRequiredSensors } from '../utils/ams2750';
+import { CLASS_TOLERANCES, evaluateSetpoint, calculateVolumeInM3, calculateVolumeInCuFt, getMinRequiredSensors, getRecommendedFurnaceClass } from '../utils/ams2750';
 import {
   Thermometer,
   Plus,
@@ -169,13 +169,25 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
       )
     : null;
 
+  // Auto-Classification Recommendation Evaluation
+  const recommendation = getRecommendedFurnaceClass(
+    setpoints,
+    channels,
+    furnaceClass,
+    tempUnit,
+    instrumentCorrection,
+    minSensorsTable17,
+    qwz,
+    meta.furnaceApplication || 'Parts'
+  );
+
   const handleApplyCsvImport = (
     importedSetpoints: SurveySetpoint[],
-    intervalSeconds?: number,
-    trendData?: TusTrendData[],
-    dwellPeriods?: DetectedDwellPeriod[],
-    rawRows?: ParsedCsvRow[],
-    mappings?: CsvColumnMapping[]
+    trendData: TusTrendData[],
+    dwellPeriods: DetectedDwellPeriod[],
+    rawRows: ParsedCsvRow[],
+    mappings: CsvColumnMapping[],
+    intervalSeconds?: number
   ) => {
     onUpdateSetpoints(importedSetpoints);
     if (importedSetpoints[0]) {
@@ -216,6 +228,49 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
           >
             ×
           </button>
+        </div>
+      )}
+
+      {/* Auto-Classification Recommendation Banner */}
+      {recommendation.bestAchievableClass !== null && recommendation.bestAchievableClass !== furnaceClass && (
+        <div className={`p-4 rounded-2xl border text-xs shadow-xl animate-fadeIn space-y-2.5 ${
+          recommendation.canDowngrade
+            ? 'bg-amber-950/90 border-amber-600/90 text-amber-100'
+            : 'bg-indigo-950/90 border-indigo-600/90 text-indigo-100'
+        }`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Sparkles className={`w-5 h-5 shrink-0 ${recommendation.canDowngrade ? 'text-amber-400' : 'text-indigo-400'}`} />
+              <div className="min-w-0">
+                <div className="font-extrabold text-white text-xs sm:text-sm">
+                  {recommendation.canDowngrade
+                    ? `Furnace Non-Conforming at Class ${furnaceClass} — Automatically Re-Classifiable as Class ${recommendation.bestAchievableClass}`
+                    : `Higher Qualification Rating Achieved — Survey Satisfies Class ${recommendation.bestAchievableClass} Standards`}
+                </div>
+                <div className="text-[11.5px] opacity-90 mt-0.5 leading-relaxed">
+                  {recommendation.canDowngrade
+                    ? `Survey data exceeds Class ${furnaceClass} tolerance (±${CLASS_TOLERANCES[furnaceClass][tempUnit]}${tempUnit}), but 100% meets Class ${recommendation.bestAchievableClass} (±${CLASS_TOLERANCES[recommendation.bestAchievableClass][tempUnit]}${tempUnit}) across all setpoints.`
+                    : `Currently configured for Class ${furnaceClass} (±${CLASS_TOLERANCES[furnaceClass][tempUnit]}${tempUnit}), but survey data exceeds requirements and meets Class ${recommendation.bestAchievableClass} (±${CLASS_TOLERANCES[recommendation.bestAchievableClass][tempUnit]}${tempUnit}).`}
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (onUpdateMeta) {
+                  onUpdateMeta({ ...meta, furnaceClass: recommendation.bestAchievableClass! });
+                }
+              }}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold shadow-md cursor-pointer transition-all flex items-center gap-1.5 shrink-0 ${
+                recommendation.canDowngrade
+                  ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold'
+                  : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Apply Class {recommendation.bestAchievableClass} Classification</span>
+            </button>
+          </div>
         </div>
       )}
 

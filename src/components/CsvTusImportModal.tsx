@@ -29,10 +29,8 @@ import {
   ArrowRight,
   Sparkles,
   Sliders,
-  X,
-  Play,
-  RotateCcw,
   Check,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 interface CsvTusImportModalProps {
@@ -44,12 +42,12 @@ interface CsvTusImportModalProps {
   tempUnit: TempUnit;
   meta: SurveyMetadata;
   onApplyImport: (
-    updatedSetpoints: SurveySetpoint[],
-    intervalSeconds?: number,
-    trendData?: TusTrendData[],
-    dwellPeriods?: DetectedDwellPeriod[],
-    rawRows?: ParsedCsvRow[],
-    mappings?: CsvColumnMapping[]
+    setpoints: SurveySetpoint[],
+    trendData: TusTrendData[],
+    dwellPeriods: DetectedDwellPeriod[],
+    rawRows: ParsedCsvRow[],
+    mappings: CsvColumnMapping[],
+    intervalSeconds?: number
   ) => void;
 }
 
@@ -68,12 +66,56 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
   const [parseResult, setParseResult] = useState<CsvParseResult | null>(null);
   const [mappings, setMappings] = useState<CsvColumnMapping[]>([]);
   const [targetTempsInput, setTargetTempsInput] = useState<string>(
-    setpoints.map((s) => s.targetTemp).join(', ') || '42, 110, 275'
+    setpoints.map((s) => s.targetTemp).join(', ') || '42, 110, 180'
   );
   const [minDwellMin, setMinDwellMin] = useState<number>(30);
   const [updateInterval, setUpdateInterval] = useState<boolean>(true);
   const [detectedDwells, setDetectedDwells] = useState<DetectedDwell[] | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handleRunDwellSearchForClass = React.useCallback(
+    (targetClass: FurnaceClass) => {
+      if (!parseResult) return;
+      const targetTemps = targetTempsInput
+        .split(',')
+        .map((t) => parseFloat(t.trim()))
+        .filter((t) => !isNaN(t) && t > 0);
+
+      const dwells = detectTusDwells(
+        parseResult.rows,
+        targetTemps,
+        mappings,
+        targetClass,
+        tempUnit,
+        minDwellMin
+      );
+      setDetectedDwells(dwells);
+    },
+    [parseResult, targetTempsInput, mappings, tempUnit, minDwellMin]
+  );
+
+  const recommendedClassForDwells = React.useMemo(() => {
+    if (!detectedDwells || !parseResult) return null;
+    const targetTemps = targetTempsInput
+      .split(',')
+      .map((t) => parseFloat(t.trim()))
+      .filter((t) => !isNaN(t) && t > 0);
+    const classes: FurnaceClass[] = [1, 2, 3, 4, 5, 6];
+    for (const fc of classes) {
+      const testDwells = detectTusDwells(
+        parseResult.rows,
+        targetTemps,
+        mappings,
+        fc,
+        tempUnit,
+        minDwellMin
+      );
+      if (testDwells.length > 0 && testDwells.every((d) => d.isSpreadCompliant)) {
+        return fc;
+      }
+    }
+    return null;
+  }, [detectedDwells, parseResult, targetTempsInput, mappings, tempUnit, minDwellMin]);
 
   if (!isOpen) return null;
 
@@ -108,13 +150,12 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
       setParseResult(res);
       setMappings(res.mappings);
 
-      // If text contains the 42, 110, 275 example or similar, suggest target temps
+      // Auto-detect target temperatures or use default
       const targetTemps = targetTempsInput
         .split(',')
         .map((t) => parseFloat(t.trim()))
         .filter((t) => !isNaN(t) && t > 0);
 
-      // Auto-run dwell search
       const dwells = detectTusDwells(
         res.rows,
         targetTemps,
@@ -125,27 +166,27 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
       );
       setDetectedDwells(dwells);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Error parsing CSV file.');
-      setParseResult(null);
+      setErrorMsg(err.message || 'Failed to parse CSV file format.');
     }
   };
 
+  const handleLoadSample = () => {
+    const sampleText = generateSampleTusCsv(channels);
+    processCsvText(sampleText, 'sample_tus_survey.csv');
+  };
 
-
-  // Update a column's mapped channel
-  const handleMappingChange = (csvHeader: string, newChannelId: string) => {
+  const handleMappingChange = (channelId: string, csvHeader: string) => {
     const updated = mappings.map((m) => {
-      if (m.csvHeader !== csvHeader) return m;
-      const targetCh = channels.find((c) => c.id === newChannelId);
-      return {
-        ...m,
-        channelId: newChannelId,
-        channelNumber: targetCh ? targetCh.channelNumber : 0,
-      };
+      if (m.channelId === channelId) {
+        return { ...m, channelId: '' };
+      }
+      if (m.csvHeader === csvHeader) {
+        return { ...m, channelId };
+      }
+      return m;
     });
     setMappings(updated);
 
-    // Re-run dwell search with updated mappings
     if (parseResult) {
       const targetTemps = targetTempsInput
         .split(',')
@@ -184,7 +225,7 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
 
   // Apply detected dwells to Survey Setpoints
   const handleApply = () => {
-    if (!detectedDwells || detectedDwells.length === 0) return;
+    if (!detectedDwells || !parseResult) return;
 
     // Create or update setpoints based on detected dwells
     const newSetpoints: SurveySetpoint[] = detectedDwells.map((dwell, idx) => {
@@ -193,237 +234,193 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
         id: existingSp ? existingSp.id : `sp-csv-${Date.now()}-${idx}`,
         targetTemp: dwell.targetTemp,
         soakDurationMinutes: dwell.evalDurationMinutes,
-        soakStartTime: dwell.evalStartTimeStr,
-        soakEndTime: dwell.evalEndTimeStr,
-        fullHoldStartTime: dwell.fullStartTimeStr,
-        fullHoldEndTime: dwell.fullEndTimeStr,
-        fullHoldDurationMinutes: dwell.fullDurationMinutes,
+        soakStartTime: dwell.startTimeStr,
+        soakEndTime: dwell.endTimeStr,
         maxOvershootObserved: dwell.maxOvershoot,
         readings: dwell.channelReadings,
       };
     });
 
-    const newInterval =
-      updateInterval && parseResult ? parseResult.detectedIntervalSeconds : undefined;
-
-    // Prepare trend data for the report graph
-    let trendData: TusTrendData[] | undefined;
-    let dwellPeriods: DetectedDwellPeriod[] | undefined;
-    
-    if (parseResult && detectedDwells) {
-      trendData = convertToTrendData(parseResult.rows, mappings);
-      dwellPeriods = convertToDwellPeriods(detectedDwells, parseResult.rows);
-    }
+    const trendData = convertToTrendData(parseResult.rows, mappings);
+    const dwellPeriods = convertToDwellPeriods(detectedDwells, parseResult.rows);
 
     onApplyImport(
       newSetpoints,
-      newInterval,
       trendData,
       dwellPeriods,
-      parseResult ? parseResult.rows : undefined,
-      mappings
+      parseResult.rows,
+      mappings,
+      updateInterval ? parseResult.detectedIntervalSeconds : undefined
     );
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="p-4 bg-slate-950/90 border-b border-slate-800 flex items-center justify-between">
+        <div className="p-6 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-blue-950/80 border border-blue-800/60 rounded-xl text-blue-400">
-              <Upload className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-slate-100 text-sm">
-                  Import TUS Datalogger CSV & Automated Dwell Search
-                </h3>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 font-bold uppercase">
-                  AMS 2750 Rev H / Nadcap
-                </span>
+              <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+                <FileSpreadsheet className="w-5 h-5" />
               </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Import TUS CSV Data & Automap</h3>
               <p className="text-xs text-slate-400">
-                Parses multi-temperature runs (e.g. 42°C, 110°C, 275°C), recognizes logging intervals, and auto-detects stabilized soak dwells.
+                Upload furnace datalogger CSV or Excel export for AMS 2750 Rev H soak & uniformity analysis.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-sm font-bold transition-colors cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            ✕
           </button>
         </div>
 
-        {/* Body content */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs">
-          {/* 1. File Upload / Sample Loader */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <label className="md:col-span-3 flex flex-col items-center justify-center border-2 border-dashed border-slate-700 hover:border-cyan-500/80 rounded-xl p-6 bg-slate-950/60 cursor-pointer transition-colors group">
-              <input
-                type="file"
-                accept=".csv,.txt,.tsv,.dat"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-              <Upload className="w-8 h-8 text-slate-400 group-hover:text-cyan-400 mb-2 transition-colors" />
-              <span className="text-xs font-semibold text-slate-200 group-hover:text-cyan-300">
-                {fileName ? fileName : 'Click to select TUS CSV / Datapaq / Yokogawa log file'}
-              </span>
-              <span className="text-[11px] text-slate-500 mt-1">
-                Supports .csv, .tsv, comma, or semicolon-separated exports
-              </span>
-            </label>
-          </div>
-
+        {/* Content Body */}
+        <div className="p-6 overflow-y-auto space-y-6 flex-1 text-slate-200">
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-red-950/60 border border-red-800 text-red-200 flex items-center gap-2">
+            <div className="p-3.5 rounded-xl bg-red-950/80 border border-red-700 text-red-200 text-xs flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
               <span>{errorMsg}</span>
             </div>
           )}
 
-          {/* 2. Detected Log Interval & Dwell Search Parameters */}
-          {parseResult && (
-            <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-4 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
-                {/* Interval Recognition */}
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-lg bg-cyan-950 text-cyan-400 border border-cyan-800">
-                    <Clock className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-white text-xs">
-                        Detected Logging Interval: {parseResult.detectedIntervalSeconds} seconds
-                      </span>
-                      <span
-                        className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
-                          parseResult.detectedIntervalSeconds <= 120
-                            ? 'bg-emerald-950 border border-emerald-800 text-emerald-300'
-                            : 'bg-red-950 border border-red-800 text-red-300'
-                        }`}
-                      >
-                        {parseResult.detectedIntervalSeconds <= 120
-                          ? 'AMS 2750 Compliant (≤ 120s)'
-                          : 'Exceeds AMS 2750 Limit (Max 120s)'}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-400">
-                      Total records: {parseResult.rows.length} rows spanning {parseResult.totalDurationMinutes} minutes.
-                    </div>
-                  </div>
-                </div>
-
-                {/* Auto Update Metadata Checkbox */}
-                <label className="flex items-center gap-2 cursor-pointer bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 text-slate-200">
-                  <input
-                    type="checkbox"
-                    checked={updateInterval}
-                    onChange={(e) => setUpdateInterval(e.target.checked)}
-                    className="rounded border-slate-600 text-cyan-500 focus:ring-0"
-                  />
-                  <span>Sync survey metadata interval ({parseResult.detectedIntervalSeconds}s)</span>
-                </label>
+          {/* 1. Upload / Sample Selection */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label className="border-2 border-dashed border-slate-700 hover:border-cyan-500/60 rounded-2xl p-6 bg-slate-950/50 flex flex-col items-center justify-center text-center cursor-pointer transition-all group">
+              <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform mb-3">
+                <Upload className="w-6 h-6" />
               </div>
+              <span className="text-sm font-bold text-slate-200">
+                {fileName ? fileName : 'Click to Upload Datalogger CSV'}
+              </span>
+              <span className="text-xs text-slate-400 mt-1">
+                Supports CSV exports from Eurotherm, Yokogawa, Watlow, Honeywell, etc.
+              </span>
+              <input type="file" accept=".csv,.txt" onChange={handleFileUpload} className="hidden" />
+            </label>
 
-              {/* Setpoints to Detect */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                <div className="sm:col-span-2">
-                  <label className="block text-slate-400 mb-1 font-medium">
-                    Target Setpoints to Search in CSV ({tempUnit}):
+            <div className="border border-slate-800 rounded-2xl p-6 bg-slate-950/50 flex flex-col justify-between">
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-2">
+                  <Sparkles className="w-4 h-4 text-cyan-400" />
+                  Try With Sample Datalogger File
+                </h4>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Don't have a CSV handy? Load our pre-configured 35-channel composite autoclave sample survey dataset containing stable ramps and soaks at 42 °C, 110 °C, and 180 °C.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleLoadSample}
+                className="mt-4 px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
+              >
+                <FileText className="w-4 h-4" />
+                <span>Load Sample TUS Survey Dataset</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 2. Survey Parameters Configuration */}
+          {parseResult && (
+            <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-4 space-y-4">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                <Sliders className="w-4 h-4" />
+                Survey Search Parameters & Dwell Detection
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                    Target Setpoints ({tempUnit}, comma separated)
                   </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={targetTempsInput}
-                      onChange={(e) => setTargetTempsInput(e.target.value)}
-                      placeholder="e.g. 42, 110, 275"
-                      className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white font-mono focus:border-cyan-500 focus:outline-none"
-                    />
-                    <button
-                      onClick={handleRunDwellSearch}
-                      className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                      <Play className="w-3.5 h-3.5" />
-                      <span>Search Dwells</span>
-                    </button>
-                  </div>
-                  <span className="text-[10px] text-slate-500">
-                    Comma-separated temperatures surveyed in this multi-point run.
-                  </span>
+                  <input
+                    type="text"
+                    value={targetTempsInput}
+                    onChange={(e) => setTargetTempsInput(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
+                  />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1 font-medium">
-                    Min Required Soak Duration:
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                    Min Dwell Duration (Minutes)
                   </label>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="number"
-                      min="10"
-                      max="240"
-                      value={minDwellMin}
-                      onChange={(e) => setMinDwellMin(parseInt(e.target.value, 10) || 30)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white font-mono focus:border-cyan-500 focus:outline-none"
-                    />
-                    <span className="text-slate-400 font-mono">min</span>
-                  </div>
-                  <span className="text-[10px] text-slate-500">
-                    AMS 2750 Rev H § 3.5.15 requires ≥ 30 min.
-                  </span>
+                  <input
+                    type="number"
+                    value={minDwellMin}
+                    onChange={(e) => setMinDwellMin(parseInt(e.target.value) || 30)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
+                  />
                 </div>
+
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={handleRunDwellSearch}
+                    className="w-full px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <span>Re-Run Dwell Detection</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
+                <input
+                  type="checkbox"
+                  id="updateInterval"
+                  checked={updateInterval}
+                  onChange={(e) => setUpdateInterval(e.target.checked)}
+                  className="rounded bg-slate-900 border-slate-700 text-cyan-500 focus:ring-cyan-500"
+                />
+                <label htmlFor="updateInterval" className="text-xs text-slate-300 cursor-pointer">
+                  Automatically set survey logging interval to detected CSV frequency ({parseResult.detectedIntervalSeconds}s)
+                </label>
               </div>
             </div>
           )}
 
-          {/* 3. Column Mapping Section */}
-          {parseResult && (
-            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <div className="flex items-center gap-2">
-                  <Sliders className="w-4 h-4 text-cyan-400" />
-                  <span className="font-bold text-slate-200">
-                    Thermocouple Column Mapping ({mappings.length} CSV Columns)
-                  </span>
-                </div>
-                <span className="text-slate-500 text-[11px]">
-                  Confirm or reassign columns to match TC channels in this app
+          {/* 3. Channel Mapping Table */}
+          {mappings.length > 0 && (
+            <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Channel Automap ({mappings.filter((m) => m.channelId !== '').length} of {channels.length} Mapped)
+                </h4>
+                <span className="text-[11px] font-mono text-slate-500">
+                  {parseResult?.rows.length} rows parsed
                 </span>
               </div>
 
-              <div className="max-h-48 overflow-y-auto divide-y divide-slate-800/60 pr-1">
-                <table className="w-full text-left">
-                  <thead className="text-[10px] uppercase text-slate-500 font-mono">
-                    <tr>
-                      <th className="py-1 px-2">CSV Column Header</th>
-                      <th className="py-1 px-2">Sample Value</th>
-                      <th className="py-1 px-2">Assigned App TC Channel</th>
+              <div className="max-h-48 overflow-y-auto border border-slate-800 rounded-lg">
+                <table className="w-full text-left border-collapse text-xs font-mono">
+                  <thead>
+                    <tr className="bg-slate-900 text-slate-400 sticky top-0 border-b border-slate-800">
+                      <th className="p-2.5">CSV Column Header</th>
+                      <th className="p-2.5">Sample Value</th>
+                      <th className="p-2.5">Assigned TUS Thermocouple Channel</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/40">
-                    {mappings.map((m) => {
-                      const sampleVal = parseResult.rows[0]?.values[m.csvHeader];
+                  <tbody className="divide-y divide-slate-800/60">
+                    {mappings.map((m, idx) => {
+                      const sampleVal = parseResult?.rows[0]?.values[m.csvHeader] ?? 'N/A';
                       return (
-                        <tr key={m.csvHeader} className="hover:bg-slate-900/50">
-                          <td className="py-1.5 px-2 font-mono text-cyan-300 font-medium">
-                            {m.csvHeader}
-                          </td>
-                          <td className="py-1.5 px-2 font-mono text-slate-400">
-                            {sampleVal !== undefined ? `${sampleVal} ${tempUnit}` : 'N/A'}
-                          </td>
-                          <td className="py-1.5 px-2">
+                        <tr key={idx} className="hover:bg-slate-900/50">
+                          <td className="p-2.5 font-bold text-slate-300">{m.csvHeader}</td>
+                          <td className="p-2.5 text-cyan-400">{sampleVal}</td>
+                          <td className="p-2.5">
                             <select
                               value={m.channelId}
-                              onChange={(e) => handleMappingChange(m.csvHeader, e.target.value)}
-                              className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 text-xs focus:border-cyan-500 focus:outline-none w-full max-w-xs"
+                              onChange={(e) => handleMappingChange(e.target.value, m.csvHeader)}
+                              className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-cyan-500"
                             >
-                              <option value="">-- Do Not Import --</option>
+                              <option value="">-- Unmapped / Ignore --</option>
                               {channels.map((ch) => (
                                 <option key={ch.id} value={ch.id}>
-                                  TC {ch.channelNumber}: {ch.label}
+                                  TC {ch.channelNumber} ({ch.label})
                                 </option>
                               ))}
                             </select>
@@ -461,6 +458,24 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
                   </span>
                 )}
               </div>
+
+              {recommendedClassForDwells !== null && recommendedClassForDwells !== furnaceClass && (
+                <div className="p-3 rounded-xl bg-indigo-950/90 border border-indigo-700/80 text-indigo-200 text-xs flex flex-wrap items-center justify-between gap-2.5 shadow-md">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
+                    <span>
+                      <strong>Auto-Classification Recommendation:</strong> Survey fails Class {furnaceClass}, but <strong>100% PASSES Class {recommendedClassForDwells} (±{CLASS_TOLERANCES[recommendedClassForDwells][tempUnit]}${tempUnit})</strong> across all setpoints.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRunDwellSearchForClass(recommendedClassForDwells)}
+                    className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] cursor-pointer transition-all shrink-0 shadow-sm"
+                  >
+                    Re-Evaluate for Class {recommendedClassForDwells}
+                  </button>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {detectedDwells.map((dwell, idx) => (

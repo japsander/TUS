@@ -1113,7 +1113,24 @@ export async function generateTusDocxBlob(params: {
         })),
       ],
     }),
-    new Paragraph({ spacing: { after: 200 } })
+    new Paragraph({ spacing: { after: 200 } }),
+    new Paragraph({
+      spacing: { before: 120, after: 120 },
+      children: [
+        new TextRun({
+          text: 'Raw data logs containing 1-minute interval readings for all TUS sensors are stored electronically and available for auditor review upon request.',
+          bold: true,
+          italics: true,
+          font: 'Arial',
+          size: 18,
+          color: '0F172A',
+        }),
+      ],
+      border: {
+        top: { style: BorderStyle.SINGLE, size: 1, color: 'CBD5E1' },
+        bottom: { style: BorderStyle.SINGLE, size: 1, color: 'CBD5E1' },
+      },
+    })
   );
 
   // ==========================================
