@@ -280,20 +280,45 @@ export default function App() {
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const handleExportAllPresets = () => {
+  const handleExportAllPresets = async () => {
     const exportData = {
       version: '1.0',
       exportedAt: new Date().toISOString(),
       furnacePresets,
       chamberPresets,
     };
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportData, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `pyrometry_presets_${new Date().toISOString().slice(0, 10)}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const fileName = `pyrometry_presets_${new Date().toISOString().slice(0, 10)}.json`;
+
+    // Detect if running in Tauri environment
+    const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
+
+    if (isTauri) {
+      try {
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+
+        const filePath = await save({
+          filters: [{ name: 'JSON', extensions: ['json'] }],
+          defaultPath: fileName,
+        });
+
+        if (filePath) {
+          await writeTextFile(filePath, jsonStr);
+        }
+      } catch (err) {
+        console.error('Tauri native save failed:', err);
+      }
+    } else {
+      // Standard browser download fallback
+      const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(jsonStr);
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute('href', dataStr);
+      downloadAnchor.setAttribute('download', fileName);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
   };
 
   const handleImportAllPresets = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -324,7 +349,7 @@ export default function App() {
 
   const settingsFileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const handleExportAllSettings = () => {
+  const handleExportAllSettings = async () => {
     const exportData = {
       version: '2.0',
       exportedAt: new Date().toISOString(),
@@ -342,13 +367,38 @@ export default function App() {
       dwellPeriods,
       checklist,
     };
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportData, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `tus_complete_settings_${meta.furnaceId || 'survey'}_${new Date().toISOString().slice(0, 10)}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const fileName = `tus_complete_settings_${meta.furnaceId || 'survey'}_${new Date().toISOString().slice(0, 10)}.json`;
+
+    // Detect if running in Tauri environment
+    const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
+
+    if (isTauri) {
+      try {
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+
+        const filePath = await save({
+          filters: [{ name: 'JSON', extensions: ['json'] }],
+          defaultPath: fileName,
+        });
+
+        if (filePath) {
+          await writeTextFile(filePath, jsonStr);
+        }
+      } catch (err) {
+        console.error('Tauri native save failed:', err);
+      }
+    } else {
+      // Standard browser download fallback
+      const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(jsonStr);
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute('href', dataStr);
+      downloadAnchor.setAttribute('download', fileName);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
   };
 
   const handleImportAllSettings = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -145,14 +145,38 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
         setpointTrendImages,
       });
 
+    const fileName = `TUS_Report_${meta.furnaceId}_AMS2750H_${meta.date}.docx`;
+
+    // Detect if running in Tauri environment
+    const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
+
+    if (isTauri) {
+      try {
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        const { writeFile } = await import('@tauri-apps/plugin-fs');
+
+        const filePath = await save({
+          filters: [{ name: 'Word Document', extensions: ['docx'] }],
+          defaultPath: fileName,
+        });
+
+        if (filePath) {
+          const uint8Array = new Uint8Array(await blob.arrayBuffer());
+          await writeFile(filePath, uint8Array);
+        }
+      } catch (err) {
+        console.error('Tauri native save failed:', err);
+      }
+    } else {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `TUS_Report_${meta.furnaceId}_AMS2750H_${meta.date}.docx`;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+    }
 
       setDownloadSuccess(true);
       setTimeout(() => setDownloadSuccess(false), 3500);
