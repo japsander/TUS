@@ -245,38 +245,31 @@ export const CalculationMethodologyModal: React.FC<CalculationMethodologyModalPr
 
                   <p className="text-slate-300 leading-relaxed">
                     When analysing continuous CSV datalogger records, the engine separates the{' '}
-                    <strong className="text-white">Stabilisation Period</strong>, the{' '}
-                    <strong className="text-white">Immediate Post-Stabilisation 30-Minute Capture Window</strong>, the{' '}
-                    <strong className="text-white">Full Physical Soak Period</strong>, and the{' '}
+                    <strong className="text-white">Full Physical Soak Period</strong>, the{' '}
+                    <strong className="text-white">30-Minute Evaluation Capture Window</strong>, and the{' '}
                     <strong className="text-white">Departure Ramp-Up</strong> to the next setpoint:
                   </p>
 
                   <ul className="space-y-2 text-slate-300 list-disc pl-4">
                     <li>
-                      <strong className="text-white">Post-Stabilisation 30-Minute Capture Window (Zero Cherry-Picking):</strong>{' '}
-                      Per AMS 2750 Rev H § 3.5.10.6, the 30-minute evaluation window is never selected using a "best-fit"
-                      or lowest-spread search later in the soak. Instead, as soon as the furnace completes stabilisation
-                      and the <strong className="text-cyan-300">lowest-reading thermocouple reaches the allowable range</strong>{' '}
-                      for the furnace class (<code className="text-cyan-300">T_min ≥ T_target - Tol_class</code>), the
-                      30-minute capture window (<code className="text-cyan-300">[evalStart .. evalStart + 30 min]</code>)
-                      begins immediately.
+                      <strong className="text-white">Dwell Identification (With Out-of-Tolerance Fallback):</strong>{' '}
+                      Searches sequentially for a contiguous hold of at least <code className="text-cyan-300">30 min</code>{' '}
+                      within strict class tolerance <code className="text-cyan-300">±Tol_class</code>. If a furnace fails
+                      strict tolerance during a soak, the detector progressively widens the search envelope so the physical
+                      soak is still captured and reported as <span className="text-red-400 font-bold">FAIL</span> rather than
+                      omitted.
                     </li>
                     <li>
-                      <strong className="text-white">Out-of-Tolerance Fallback:</strong>{' '}
-                      If a furnace is tested against a tighter class where sensors exceed upper tolerance or fail to
-                      reach <code className="text-cyan-300">T_target - Tol_class</code>, the capture window begins
-                      immediately when the lowest reading TC reaches <code className="text-cyan-300">T_target - Tol_class</code>{' '}
-                      (or at the start of the stabilised plateau if <code className="text-cyan-300">T_target - Tol_class</code>{' '}
-                      is never reached) so the non-conformance is transparently reported as{' '}
-                      <span className="text-red-400 font-bold">FAIL</span>.
-                    </li>
-                    <li>
-                      <strong className="text-white">True Soak End Detection (Ramp-Up Separation):</strong>{' '}
+                      <strong className="text-white">True Soak End Detection:</strong>{' '}
                       Tracks the full stabilized hold at the setpoint until the furnace departs. If the hold exits via a
                       sustained monotonic ramp-up to the next setpoint (or final cooldown), the algorithm backtracks along
                       the continuous departure slope (<code className="text-cyan-300">ΔT_mean ≥ +0.15°/step</code> or{' '}
                       <code className="text-cyan-300">≥ +0.40°/3-steps</code>) to pinpoint the exact row{' '}
                       <code className="text-cyan-300">soakEndIndex</code> where the steady soak ended and the next ramp began.
+                    </li>
+                    <li>
+                      <strong className="text-white">30-Minute Capture Window & Anti-Cherry-Picking (AMS 2750 Rev H / Nadcap):</strong>{' '}
+                      Per AMS 2750 Rev H § 3.5.13 and Nadcap AC7102/8 § 4.1, the 30-minute evaluation window must be anchored strictly to initial thermal stabilization at the onset of soak (within max 25 minutes of entering the setpoint plateau, once <code className="text-cyan-300">dMin/dt ≤ 0.20°C/min</code>). The algorithm is strictly prohibited from scanning downstream into an extended soak to cherry-pick passing windows. If any thermocouple is out of tolerance during this qualified initial window, the survey reports an honest Non-Conformance (FAIL). Any manual window shifts require documented pyrometry justification.
                     </li>
                   </ul>
                 </div>

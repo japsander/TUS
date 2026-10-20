@@ -4,6 +4,7 @@ import {
   QualifiedWorkZone,
   ThermocoupleChannel,
   DimUnit,
+  ActiveFailedSetpointInfo,
 } from '../types/tus';
 import {
   getLogicalWireRiggingSchedule,
@@ -34,6 +35,7 @@ import {
   X,
   Check,
   ArrowRight,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface TechnicalSchematic2DProps {
@@ -45,6 +47,7 @@ interface TechnicalSchematic2DProps {
   onSelectChannel: (id: string) => void;
   onUpdateChannels?: (channels: ThermocoupleChannel[]) => void;
   onExportImageReady?: (dataUrl: string) => void;
+  activeFailedSetpoint?: ActiveFailedSetpointInfo | null;
 }
 
 export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
@@ -56,6 +59,7 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
   onSelectChannel,
   onUpdateChannels,
   onExportImageReady,
+  activeFailedSetpoint,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const channelInputRef = useRef<HTMLInputElement | null>(null);
@@ -656,6 +660,42 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
         </div>
       )}
 
+      {/* Failed Setpoint Areas of Concern Alert Ribbon */}
+      {activeFailedSetpoint && activeFailedSetpoint.failedCount > 0 && (
+        <div className="bg-red-950/95 border-b border-red-700/80 px-3.5 py-2 text-xs flex flex-wrap items-center justify-between gap-2 shadow-inner z-10 animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="relative flex h-3 w-3 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+            </span>
+            <div className="min-w-0 flex flex-wrap items-center gap-1.5">
+              <span className="font-extrabold text-white bg-red-800 px-2 py-0.5 rounded text-[11px] uppercase tracking-wide">
+                SP {activeFailedSetpoint.targetTemp} {activeFailedSetpoint.tempUnit} FAILED
+              </span>
+              <span className="text-red-200 font-semibold text-[11px]">
+                {activeFailedSetpoint.failedCount} Area{activeFailedSetpoint.failedCount === 1 ? '' : 's'} of Concern Highlighted on Wire Grid
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => {
+                const failingIds = Object.keys(activeFailedSetpoint.failingSensors);
+                if (failingIds.length === 0) return;
+                const currentIdx = failingIds.indexOf(selectedChannelId || '');
+                const nextIdx = (currentIdx + 1) % failingIds.length;
+                onSelectChannel(failingIds[nextIdx]);
+              }}
+              className="px-2.5 py-1 rounded-lg bg-red-900 hover:bg-red-800 text-white text-[11px] font-bold border border-red-600 transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title="Focus on next out-of-tolerance sensor"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-300" />
+              <span>Next Concern TC ➔</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* SVG Canvas Rendering 2D Isometric Technical Schematic */}
       <div
         className="w-full h-[320px] sm:h-[420px] xl:h-[500px] relative overflow-hidden flex items-center justify-center p-1 sm:p-2 cursor-grab active:cursor-grabbing touch-none"
@@ -704,6 +744,15 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
             <filter id="badge-shadow" x="-20%" y="-20%" width="140%" height="140%">
               <feDropShadow dx="0" dy="1.5" stdDeviation="1" floodOpacity="0.25" />
             </filter>
+
+            {/* Glowing pulse shadow and gradient for failed sensors / areas of concern */}
+            <filter id="fail-badge-shadow" x="-50%" y="-50%" width="200%" height="200%">
+              <feDropShadow dx="0" dy="2" stdDeviation="3.5" floodColor="#DC2626" floodOpacity="0.75" />
+            </filter>
+            <linearGradient id="fail-badge-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#EF4444" />
+              <stop offset="100%" stopColor="#B91C1C" />
+            </linearGradient>
           </defs>
 
           {/* Background */}
@@ -1011,15 +1060,19 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
           {/* When channelNumber === 0, renders as an EMPTY TRIANGLE △    */}
           {/* Clicking any triangle opens the Field Instrument Channel #  */}
           {/* assignment popover!                                         */}
+          {/* When activeFailedSetpoint is present, highlights failed     */}
+          {/* sensors with red pulse rings, badges & reading callouts!    */}
           {/* ----------------------------------------------------------- */}
           <g>
             {projectedChannels.map((ch) => {
               const isSelected = ch.id === selectedChannelId || ch.id === editingTriangleId;
               const isUnassigned = ch.channelNumber <= 0;
+              const failInfo = activeFailedSetpoint?.failingSensors[ch.id];
+              const isConcern = Boolean(failInfo);
               const tx = ch.px;
               const ty = ch.py;
               // Triangle dimensions
-              const size = isSelected ? 17 : 14.5;
+              const size = isSelected ? 17 : isConcern ? 16 : 14.5;
               const topY = ty - size * 0.95;
               const leftX = tx - size;
               const rightX = tx + size;
@@ -1040,7 +1093,33 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
                   className="cursor-pointer group"
                 >
                   {/* Invisible slightly larger hit target for easy clicking */}
-                  <circle cx={tx} cy={ty} r={size + 6} fill="transparent" />
+                  <circle cx={tx} cy={ty} r={size + 8} fill="transparent" />
+
+                  {/* Area of Concern Pulse / Beacon Alert Rings */}
+                  {isConcern && (
+                    <g className="pointer-events-none">
+                      <circle
+                        cx={tx}
+                        cy={ty}
+                        r={size + 7}
+                        fill="rgba(239, 68, 68, 0.22)"
+                        stroke="#DC2626"
+                        strokeWidth="2.2"
+                        strokeDasharray="4,2"
+                        opacity="0.95"
+                      />
+                      <circle
+                        cx={tx}
+                        cy={ty}
+                        r={size + 13}
+                        fill="none"
+                        stroke="#EF4444"
+                        strokeWidth="1.2"
+                        opacity="0.7"
+                        strokeDasharray="3,3"
+                      />
+                    </g>
+                  )}
 
                   {/* Pulse ring when actively editing this triangle */}
                   {ch.id === editingTriangleId && (
@@ -1059,7 +1138,11 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
                   <polygon
                     points={`${tx},${topY} ${rightX},${bottomY} ${leftX},${bottomY}`}
                     fill={
-                      ch.failed
+                      isConcern
+                        ? isSelected
+                          ? '#991B1B'
+                          : 'url(#fail-badge-grad)'
+                        : ch.failed
                         ? '#FECACA'
                         : isSelected
                         ? '#FEF08A'
@@ -1068,7 +1151,9 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
                         : '#FFFFFF'
                     }
                     stroke={
-                      ch.failed
+                      isConcern
+                        ? '#7F1D1D'
+                        : ch.failed
                         ? '#B91C1C'
                         : isSelected
                         ? '#DC2626'
@@ -1076,10 +1161,10 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
                         ? '#D97706'
                         : '#000000'
                     }
-                    strokeWidth={isSelected ? '2.5' : isUnassigned ? '2.0' : '1.8'}
-                    strokeDasharray={isUnassigned && !isSelected ? '3,1.5' : 'none'}
+                    strokeWidth={isConcern ? '2.8' : isSelected ? '2.5' : isUnassigned ? '2.0' : '1.8'}
+                    strokeDasharray={isUnassigned && !isSelected && !isConcern ? '3,1.5' : 'none'}
                     strokeLinejoin="round"
-                    filter="url(#badge-shadow)"
+                    filter={isConcern ? 'url(#fail-badge-shadow)' : 'url(#badge-shadow)'}
                   />
 
                   {/* Channel Number Text Centered inside Triangle (Empty when unassigned!) */}
@@ -1088,7 +1173,7 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
                       x={tx}
                       y={ty + 3}
                       textAnchor="middle"
-                      fill={isSelected ? '#991B1B' : '#000000'}
+                      fill={isConcern ? '#FFFFFF' : isSelected ? '#991B1B' : '#000000'}
                       fontSize={ch.channelNumber > 9 ? '10' : '11.5'}
                       fontWeight="bold"
                       style={{ pointerEvents: 'none' }}
@@ -1097,8 +1182,39 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
                     </text>
                   )}
 
+                  {/* Area of Concern Temperature Deviation Pill Badge above Triangle */}
+                  {isConcern && failInfo && (
+                    <g transform={`translate(${tx}, ${topY - 14})`} className="pointer-events-none">
+                      <rect
+                        x="-28"
+                        y="-10"
+                        width="56"
+                        height="18"
+                        rx="4"
+                        fill="#DC2626"
+                        stroke="#7F1D1D"
+                        strokeWidth="1.2"
+                        filter="url(#badge-shadow)"
+                      />
+                      <text
+                        x="0"
+                        y="2.5"
+                        textAnchor="middle"
+                        fill="#FFFFFF"
+                        fontSize="9.5"
+                        fontWeight="bold"
+                        fontFamily="ui-monospace, monospace"
+                      >
+                        {failInfo.reason === 'low' ? '▼ ' : failInfo.reason === 'high' ? '▲ ' : ''}
+                        {failInfo.correctedTemp !== undefined ? `${failInfo.correctedTemp}°` : 'FAIL'}
+                      </text>
+                    </g>
+                  )}
+
                   <title>
-                    {ch.channelNumber > 0
+                    {isConcern && failInfo
+                      ? `⚠️ AREA OF CONCERN: TC ${ch.channelNumber} (${ch.label}) — Reading: ${failInfo.correctedTemp}${activeFailedSetpoint?.tempUnit} (Delta: ${failInfo.deltaFromTarget !== undefined && failInfo.deltaFromTarget > 0 ? '+' : ''}${failInfo.deltaFromTarget}${activeFailedSetpoint?.tempUnit} vs Target ${failInfo.targetTemp}${activeFailedSetpoint?.tempUnit} ±${failInfo.tolerance}${activeFailedSetpoint?.tempUnit})`
+                      : ch.channelNumber > 0
                       ? `TC ${ch.channelNumber} (${ch.label}) — Click to change Field Instrument Channel #`
                       : `Empty Sensor Triangle (${ch.label}) — Click to enter Field Instrument Channel #`}
                   </title>
@@ -1126,6 +1242,14 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
             >
               △ Thermocouple Positions • Blue: 4 Main Opposite-Corner 3D Diagonals • Slate: 12 Perimeter Rails
             </text>
+            {activeFailedSetpoint && activeFailedSetpoint.failedCount > 0 && (
+              <g transform="translate(0, 32)">
+                <polygon points="6,-6 12,5 0,5" fill="#DC2626" stroke="#7F1D1D" strokeWidth="1.2" />
+                <text x="18" y="2" fill="#DC2626" fontSize="10.5" fontWeight="bold">
+                  🔴 {activeFailedSetpoint.failedCount} Out-of-Tolerance Area(s) of Concern Highlighted (SP {activeFailedSetpoint.targetTemp}{activeFailedSetpoint.tempUnit})
+                </text>
+              </g>
+            )}
           </g>
           <g transform="translate(650, 20)">
             <rect width="180" height="145" rx="5" fill={isWhiteTheme ? '#F8FAFC' : '#0F172A'} stroke="#64748B" strokeWidth="1" opacity="0.9" />

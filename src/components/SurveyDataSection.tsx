@@ -24,6 +24,7 @@ import {
   Calculator,
 } from 'lucide-react';
 import { CsvTusImportModal } from './CsvTusImportModal';
+import { ParsedCsvRow, CsvColumnMapping } from '../utils/csvTusParser';
 
 interface SurveyDataSectionProps {
   setpoints: SurveySetpoint[];
@@ -33,11 +34,15 @@ interface SurveyDataSectionProps {
   instrumentCorrection: number;
   meta: SurveyMetadata;
   qwz?: QualifiedWorkZone;
+  activeSetpointId?: string;
+  onSelectSetpoint?: (id: string) => void;
+  onSelectChannel?: (id: string) => void;
   onUpdateSetpoints: (setpoints: SurveySetpoint[]) => void;
   onUpdateChannels: (channels: ThermocoupleChannel[]) => void;
   onUpdateMeta?: (meta: SurveyMetadata) => void;
   onUpdateTrendData?: (data: TusTrendData[]) => void;
   onUpdateDwellPeriods?: (periods: DetectedDwellPeriod[]) => void;
+  onUpdateRawRows?: (rawRows: ParsedCsvRow[], mappings: CsvColumnMapping[]) => void;
   onOpenMethodology?: () => void;
 }
 
@@ -49,16 +54,25 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
   instrumentCorrection,
   meta,
   qwz,
+  activeSetpointId: propActiveSetpointId,
+  onSelectSetpoint,
+  onSelectChannel,
   onUpdateSetpoints,
   onUpdateChannels,
   onUpdateMeta,
   onUpdateTrendData,
   onUpdateDwellPeriods,
+  onUpdateRawRows,
   onOpenMethodology,
 }) => {
-  const [activeSetpointId, setActiveSetpointId] = useState<string>(
+  const [internalActiveSetpointId, setInternalActiveSetpointId] = useState<string>(
     setpoints[0]?.id || ''
   );
+  const activeSetpointId = propActiveSetpointId ?? internalActiveSetpointId;
+  const setActiveSetpointId = (id: string) => {
+    setInternalActiveSetpointId(id);
+    if (onSelectSetpoint) onSelectSetpoint(id);
+  };
   const [csvModalOpen, setCsvModalOpen] = useState(false);
   const [importNotice, setImportNotice] = useState<string | null>(null);
 
@@ -159,7 +173,9 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
     importedSetpoints: SurveySetpoint[],
     intervalSeconds?: number,
     trendData?: TusTrendData[],
-    dwellPeriods?: DetectedDwellPeriod[]
+    dwellPeriods?: DetectedDwellPeriod[],
+    rawRows?: ParsedCsvRow[],
+    mappings?: CsvColumnMapping[]
   ) => {
     onUpdateSetpoints(importedSetpoints);
     if (importedSetpoints[0]) {
@@ -176,6 +192,9 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
     }
     if (dwellPeriods && onUpdateDwellPeriods) {
       onUpdateDwellPeriods(dwellPeriods);
+    }
+    if (onUpdateRawRows && rawRows) {
+      onUpdateRawRows(rawRows, mappings || []);
     }
     setImportNotice(
       `Successfully imported ${importedSetpoints.length} TUS dwell periods (${importedSetpoints.map(s => `${s.targetTemp}${tempUnit}`).join(', ')}) with ${intervalSeconds ? `${intervalSeconds}s logging interval` : 'mapped channels'}.`
@@ -215,24 +234,36 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
               meta.furnaceApplication || 'Parts'
             );
             const isActive = sp.id === activeSetpointId;
+            const isFailed = !spAnalysis.passed;
             return (
               <button
                 key={sp.id}
                 onClick={() => setActiveSetpointId(sp.id)}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
                   isActive
-                    ? 'bg-cyan-950/80 border-cyan-500 text-cyan-300 shadow-md'
+                    ? isFailed
+                      ? 'bg-red-950/90 border-red-500 text-red-200 shadow-lg ring-2 ring-red-500/50'
+                      : 'bg-cyan-950/80 border-cyan-500 text-cyan-300 shadow-md ring-1 ring-cyan-500/30'
+                    : isFailed
+                    ? 'bg-slate-950 border-red-900/60 text-red-300/80 hover:text-red-100 hover:border-red-700'
                     : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
                 }`}
               >
-                <Thermometer className="w-3.5 h-3.5" />
+                <Thermometer className={`w-3.5 h-3.5 ${isFailed ? 'text-red-400' : 'text-cyan-400'}`} />
                 <span>
                   SP {idx + 1}: {sp.targetTemp} {tempUnit}
                 </span>
                 {spAnalysis.passed ? (
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                 ) : (
-                  <XCircle className="w-3.5 h-3.5 text-red-400" />
+                  <div className="flex items-center gap-1.5">
+                    <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                    {isActive && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-800 text-white animate-pulse">
+                        Schematic Highlighted
+                      </span>
+                    )}
+                  </div>
                 )}
               </button>
             );
@@ -280,6 +311,33 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
           )}
         </div>
       </div>
+
+      {/* Setpoint Failure Notification Banner with Schematic Highlight Notice */}
+      {currentSetpoint && analysis && !analysis.passed && (
+        <div className="p-4 rounded-2xl bg-red-950/80 border border-red-700/90 text-red-100 text-xs shadow-xl animate-fadeIn space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="relative flex h-3 w-3 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+              </span>
+              <span className="font-extrabold text-white text-xs sm:text-sm">
+                SP {currentSetpoint.targetTemp} {tempUnit} DEEMED NON-CONFORMING (FAIL)
+              </span>
+              <span className="text-[11px] bg-red-900 border border-red-600/80 text-white font-mono px-2 py-0.5 rounded font-bold">
+                {analysis.channelResults.filter((cr) => !cr.inTolerance || cr.failed).length} Out-of-Tolerance Area(s) of Concern
+              </span>
+            </div>
+            <span className="text-[11px] font-semibold text-red-300 bg-red-900/40 px-2.5 py-1 rounded-lg border border-red-700/60 flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span>Sensors Highlighted on Schematic</span>
+            </span>
+          </div>
+          <p className="text-red-200/90 text-[11.5px] leading-relaxed">
+            All thermocouple sensors exceeding Class {furnaceClass} tolerance (±{analysis.tolerance} {tempUnit}) are highlighted with red alert beacons on the 3D Wire Grid Schematic on the left. Click on any sensor in the table below to inspect its 6-way physical clearances.
+          </p>
+        </div>
+      )}
 
       {currentSetpoint && analysis && (
         <div className="space-y-6">
@@ -349,24 +407,69 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                 </div>
 
                 {/* Audit Capture Window Info */}
-                <div className="col-span-2 bg-emerald-950/10 border border-emerald-900/30 rounded-xl p-3 space-y-2">
+                <div className="col-span-2 bg-emerald-950/10 border border-emerald-900/30 rounded-xl p-3 space-y-2.5">
                   <div className="flex items-center justify-between border-b border-emerald-900/20 pb-1.5 mb-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Audit Capture Window (30 Min)</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Audit Capture Window (30 Min)</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
+                        AMS 2750 Rev H
+                      </span>
+                    </div>
                     <span className="text-[10px] font-mono text-emerald-400 font-bold">{currentSetpoint.soakDurationMinutes} min</span>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] text-emerald-500/60 mb-0.5">Window Start</label>
-                      <div className="text-xs font-mono text-emerald-200 bg-slate-900 border border-emerald-900/40 px-2 py-1 rounded">
-                        {currentSetpoint.soakStartTime}
-                      </div>
+                      <label className="block text-[10px] text-emerald-500/60 mb-0.5">Window Start (Onset of Soak)</label>
+                      <input
+                        type="text"
+                        value={currentSetpoint.soakStartTime}
+                        onChange={(e) =>
+                          handleUpdateSetpoint(currentSetpoint.id, {
+                            soakStartTime: e.target.value,
+                            isWindowOverridden: true,
+                          })
+                        }
+                        className="w-full text-xs font-mono text-emerald-200 bg-slate-900 border border-emerald-900/40 px-2 py-1 rounded focus:border-cyan-500 focus:outline-none"
+                        placeholder="HH:mm"
+                      />
                     </div>
                     <div>
                       <label className="block text-[10px] text-emerald-500/60 mb-0.5">Window End</label>
-                      <div className="text-xs font-mono text-emerald-200 bg-slate-900 border border-emerald-900/40 px-2 py-1 rounded">
-                        {currentSetpoint.soakEndTime}
-                      </div>
+                      <input
+                        type="text"
+                        value={currentSetpoint.soakEndTime}
+                        onChange={(e) =>
+                          handleUpdateSetpoint(currentSetpoint.id, {
+                            soakEndTime: e.target.value,
+                            isWindowOverridden: true,
+                          })
+                        }
+                        className="w-full text-xs font-mono text-emerald-200 bg-slate-900 border border-emerald-900/40 px-2 py-1 rounded focus:border-cyan-500 focus:outline-none"
+                        placeholder="HH:mm"
+                      />
                     </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-1 flex items-center justify-between">
+                      <span>Auditor Justification / Override Note (Optional)</span>
+                      {currentSetpoint.isWindowOverridden && (
+                        <span className="text-[9px] text-amber-400 font-medium">Manual Window Active</span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      value={currentSetpoint.windowOverrideNote || ''}
+                      onChange={(e) =>
+                        handleUpdateSetpoint(currentSetpoint.id, {
+                          windowOverrideNote: e.target.value,
+                        })
+                      }
+                      placeholder="e.g. Initial stabilization verified; soak started at burner trim adjustment per SOP-HT-04 § 5.2"
+                      className="w-full text-[11px] bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1 text-slate-200 placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
+                  <div className="text-[10px] text-emerald-400/70 italic flex items-center gap-1">
+                    <span>✓ Anchored to initial stabilization at soak onset (eliminates cherry-picking per Nadcap AC7102/8).</span>
                   </div>
                 </div>
 
@@ -547,19 +650,23 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                   {analysis.channelResults.map((cr) => (
                     <tr
                       key={cr.channelId}
-                      className={
+                      onClick={() => {
+                        if (onSelectChannel) onSelectChannel(cr.channelId);
+                      }}
+                      className={`transition-colors cursor-pointer ${
                         cr.failed
-                          ? 'bg-slate-950/70 opacity-65'
-                          : cr.inTolerance
-                          ? 'hover:bg-slate-800/40'
-                          : 'bg-red-950/20'
-                      }
+                          ? 'bg-slate-950/70 opacity-65 hover:bg-slate-900/60'
+                          : !cr.inTolerance
+                          ? 'bg-red-950/40 hover:bg-red-900/50 border-l-4 border-red-500'
+                          : 'hover:bg-slate-800/40'
+                      }`}
+                      title={!cr.inTolerance ? 'Click to focus this Area of Concern sensor on the 3D Schematic' : 'Click to select sensor on schematic'}
                     >
                       <td className="py-2 px-2 text-center font-bold text-slate-300">
                         {cr.channelNumber > 0 ? cr.channelNumber : '△'}
                       </td>
                       <td className="py-2 px-2.5 font-sans text-slate-200 truncate max-w-[200px] xl:max-w-none">{cr.label}</td>
-                      <td className="py-2 px-2 text-center">
+                      <td className="py-2 px-2 text-center" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="number"
                           step="0.1"
@@ -571,7 +678,7 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                           className="w-20 text-center bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-xs text-white focus:border-cyan-500 focus:outline-none disabled:opacity-40"
                         />
                       </td>
-                      <td className="py-2 px-2 text-center">
+                      <td className="py-2 px-2 text-center" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="number"
                           step="0.05"
@@ -593,7 +700,7 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                           ? `+${cr.deltaFromTarget.toFixed(1)}`
                           : cr.deltaFromTarget.toFixed(1)}
                       </td>
-                      <td className="py-2 px-2 text-center">
+                      <td className="py-2 px-2 text-center" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           onClick={() => {
@@ -619,12 +726,13 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                           </span>
                         ) : (
                           <span
-                            className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold ${
                               cr.inTolerance
                                 ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/60'
-                                : 'bg-red-950 text-red-400 border border-red-800/60'
+                                : 'bg-red-900 text-white border border-red-600 shadow-sm animate-pulse'
                             }`}
                           >
+                            {!cr.inTolerance && <AlertTriangle className="w-3 h-3 text-amber-300 shrink-0" />}
                             {cr.inTolerance ? 'PASS' : 'FAIL'}
                           </span>
                         )}
@@ -640,13 +748,17 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
               {analysis.channelResults.map((cr) => (
                 <div
                   key={cr.channelId}
-                  className={`p-3.5 space-y-2.5 ${
+                  onClick={() => {
+                    if (onSelectChannel) onSelectChannel(cr.channelId);
+                  }}
+                  className={`p-3.5 space-y-2.5 cursor-pointer transition-colors ${
                     cr.failed
                       ? 'bg-slate-950/70 opacity-75'
-                      : cr.inTolerance
-                      ? 'bg-slate-900/40'
-                      : 'bg-red-950/20'
+                      : !cr.inTolerance
+                      ? 'bg-red-950/40 border-l-4 border-red-500 hover:bg-red-900/50'
+                      : 'bg-slate-900/40 hover:bg-slate-900/70'
                   }`}
+                  title={!cr.inTolerance ? 'Click to focus this Area of Concern sensor on the 3D Schematic' : 'Click to select sensor'}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">

@@ -5,6 +5,7 @@ import {
   ThermocoupleChannel,
   DimUnit,
   TestInstrument,
+  ActiveFailedSetpointInfo,
 } from '../types/tus';
 import {
   calculateVolumeInM3,
@@ -41,6 +42,7 @@ interface QWZInfoPanelProps {
   onOpenRiggingGuide?: () => void;
   onFitSensorsToQWZ?: (count?: number) => void;
   onNavigateTab?: (tab: string) => void;
+  activeFailedSetpoint?: ActiveFailedSetpointInfo | null;
 }
 
 export const QWZInfoPanel: React.FC<QWZInfoPanelProps> = ({
@@ -55,6 +57,7 @@ export const QWZInfoPanel: React.FC<QWZInfoPanelProps> = ({
   onOpenRiggingGuide,
   onFitSensorsToQWZ,
   onNavigateTab,
+  activeFailedSetpoint,
 }) => {
   const volumeM3 = calculateVolumeInM3(qwz, dimUnit);
   const volumeCuFt = calculateVolumeInCuFt(qwz, dimUnit);
@@ -327,6 +330,26 @@ export const QWZInfoPanel: React.FC<QWZInfoPanelProps> = ({
             <div>To Left: <strong className="text-white">{selectedChannel.distLeft}</strong> {dimUnit}</div>
             <div>To Right: <strong className="text-white">{selectedChannel.distRight}</strong> {dimUnit}</div>
           </div>
+
+          {activeFailedSetpoint && activeFailedSetpoint.failingSensors[selectedChannel.id] && (() => {
+            const failInfo = activeFailedSetpoint.failingSensors[selectedChannel.id];
+            return (
+              <div className="p-2.5 rounded-lg bg-red-950/80 border border-red-700/80 text-red-200 text-xs flex flex-wrap items-center justify-between gap-2 shadow-sm animate-fadeIn">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0" />
+                  <div>
+                    <span className="font-bold text-white">Area of Concern in SP {activeFailedSetpoint.targetTemp}{activeFailedSetpoint.tempUnit}:</span>
+                    <span className="ml-1 text-red-200">
+                      Reading {failInfo.correctedTemp}{activeFailedSetpoint.tempUnit} (Delta: {failInfo.deltaFromTarget !== undefined && failInfo.deltaFromTarget > 0 ? '+' : ''}{failInfo.deltaFromTarget}{activeFailedSetpoint.tempUnit}) breached Class tolerance [±{activeFailedSetpoint.tolerance}{activeFailedSetpoint.tempUnit}]
+                    </span>
+                  </div>
+                </div>
+                <span className="px-2 py-0.5 rounded bg-red-900 border border-red-700 text-white font-bold text-[10px] uppercase tracking-wide">
+                  {failInfo.reason === 'low' ? 'Too Cold / Lagging Zone' : failInfo.reason === 'high' ? 'Too Hot / Overshoot Zone' : 'Out of Spec'}
+                </span>
+              </div>
+            );
+          })()}
         </div>
       )}
 

@@ -92,6 +92,8 @@ export interface SurveySetpoint {
   controlSetpoint?: number;
   controlReading?: number;
   controlOffset?: number;
+  windowOverrideNote?: string;
+  isWindowOverridden?: boolean;
 }
 
 export interface SecondaryStandard {
@@ -185,4 +187,29 @@ export interface DetectedDwellPeriod {
   evalEndIndex?: number;
   evalStartTimeSec?: number;
   evalEndTimeSec?: number;
+}
+
+export interface FailedSensorHighlight {
+  channelId: string;
+  channelNumber: number;
+  label: string;
+  reading?: number;
+  correctedTemp?: number;
+  deltaFromTarget?: number;
+  reason?: 'low' | 'high' | 'open' | 'spread';
+  targetTemp?: number;
+  tolerance?: number;
+}
+
+export interface ActiveFailedSetpointInfo {
+  setpointId: string;
+  targetTemp: number;
+  tempUnit: TempUnit;
+  tolerance: number;
+  minAllowed: number;
+  maxAllowed: number;
+  failedCount: number;
+  totalCount: number;
+  reasons: string[];
+  failingSensors: Record<string, FailedSensorHighlight>;
 }

@@ -15,6 +15,7 @@ import {
   CsvParseResult,
   DetectedDwell,
   CsvColumnMapping,
+  ParsedCsvRow,
   convertToTrendData,
   convertToDwellPeriods,
 } from '../utils/csvTusParser';
@@ -45,7 +46,9 @@ interface CsvTusImportModalProps {
     updatedSetpoints: SurveySetpoint[],
     intervalSeconds?: number,
     trendData?: TusTrendData[],
-    dwellPeriods?: DetectedDwellPeriod[]
+    dwellPeriods?: DetectedDwellPeriod[],
+    rawRows?: ParsedCsvRow[],
+    mappings?: CsvColumnMapping[]
   ) => void;
 }
 
@@ -211,7 +214,14 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
       dwellPeriods = convertToDwellPeriods(detectedDwells, parseResult.rows);
     }
 
-    onApplyImport(newSetpoints, newInterval, trendData, dwellPeriods);
+    onApplyImport(
+      newSetpoints,
+      newInterval,
+      trendData,
+      dwellPeriods,
+      parseResult ? parseResult.rows : undefined,
+      mappings
+    );
     onClose();
   };
 

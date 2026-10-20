@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   FurnaceChamber,
   QualifiedWorkZone,
@@ -19,6 +19,8 @@ import {
   DimUnit,
   TusTrendData,
   DetectedDwellPeriod,
+  ActiveFailedSetpointInfo,
+  FailedSensorHighlight,
 } from './types/tus';
 import { getTusIntervalInfo, calculateNextTusDueDate } from './utils/tusCompliance';
 import {
@@ -32,6 +34,7 @@ import {
   computeSensorDistances,
   balanceSensors,
 } from './utils/ams2750';
+import { ParsedCsvRow, CsvColumnMapping, detectTusDwells, convertToDwellPeriods } from './utils/csvTusParser';
 import { TechnicalSchematic2D } from './components/TechnicalSchematic2D';
 import { DimensionInputs, ChamberPreset } from './components/DimensionInputs';
 import { ChannelManager } from './components/ChannelManager';
@@ -142,10 +145,58 @@ export default function App() {
 
   // Survey Setpoints in Celsius (°C)
   const [setpoints, setSetpoints] = useState<SurveySetpoint[]>([]);
+  const [activeSetpointId, setActiveSetpointId] = useState<string>('');
+
+  useEffect(() => {
+    if (setpoints.length > 0 && (!activeSetpointId || !setpoints.some((s) => s.id === activeSetpointId))) {
+      setActiveSetpointId(setpoints[0].id);
+    }
+  }, [setpoints, activeSetpointId]);
 
   // TUS Trend Data from CSV (for Report Graph)
   const [trendData, setTrendData] = useState<TusTrendData[]>([]);
   const [dwellPeriods, setDwellPeriods] = useState<DetectedDwellPeriod[]>([]);
+  const [rawCsvRows, setRawCsvRows] = useState<ParsedCsvRow[]>([]);
+  const [csvMappings, setCsvMappings] = useState<CsvColumnMapping[]>([]);
+
+  const [classChangeNotice, setClassChangeNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (rawCsvRows.length > 0 && csvMappings.length > 0) {
+      const targetTemps = setpoints.map(s => s.targetTemp);
+      if (targetTemps.length > 0) {
+        const updatedDwells = detectTusDwells(
+          rawCsvRows,
+          targetTemps,
+          csvMappings,
+          meta.furnaceClass,
+          tempUnit,
+          30
+        );
+        if (updatedDwells.length > 0) {
+          const newSetpoints: SurveySetpoint[] = updatedDwells.map((dwell, idx) => {
+            const existingSp = setpoints[idx] || setpoints.find((s) => Math.abs(s.targetTemp - dwell.targetTemp) < 5);
+            return {
+              id: existingSp ? existingSp.id : `sp-csv-${Date.now()}-${idx}`,
+              targetTemp: dwell.targetTemp,
+              soakDurationMinutes: dwell.evalDurationMinutes,
+              soakStartTime: dwell.evalStartTimeStr,
+              soakEndTime: dwell.evalEndTimeStr,
+              fullHoldStartTime: dwell.fullStartTimeStr,
+              fullHoldEndTime: dwell.fullEndTimeStr,
+              fullHoldDurationMinutes: dwell.fullDurationMinutes,
+              maxOvershootObserved: dwell.maxOvershoot,
+              readings: dwell.channelReadings,
+            };
+          });
+          setSetpoints(newSetpoints);
+          setDwellPeriods(convertToDwellPeriods(updatedDwells, rawCsvRows));
+          setClassChangeNotice(`Furnace class updated to Class ${meta.furnaceClass}: Automatically re-reviewed CSV log and recalculated dwell start/end times.`);
+          setTimeout(() => setClassChangeNotice(null), 6000);
+        }
+      }
+    }
+  }, [meta.furnaceClass, tempUnit]);
 
   // TUS Compliance
   const [isExtendedInterval, setIsExtendedInterval] = useState(false);
@@ -621,6 +672,112 @@ export default function App() {
   );
   const isOverallConformant = checklist.every((item) => item.compliant);
 
+  // Active selected setpoint analysis & areas of concern highlighting
+  const currentSelectedSetpoint = setpoints.find((s) => s.id === activeSetpointId) || setpoints[0];
+  const currentSelectedAnalysis = setpointAnalyses.find((sa) => sa.setpointId === currentSelectedSetpoint?.id) || null;
+
+  const activeFailedSetpoint: ActiveFailedSetpointInfo | null = useMemo(() => {
+    if (!currentSelectedSetpoint || !currentSelectedAnalysis || currentSelectedAnalysis.passed) {
+      return null;
+    }
+
+    const failingSensors: Record<string, FailedSensorHighlight> = {};
+    const reasons: string[] = [];
+
+    // 1. Mark out-of-tolerance channels and open/failed channels
+    currentSelectedAnalysis.channelResults.forEach((cr) => {
+      if (!cr.inTolerance) {
+        const isLow = cr.correctedTemp < currentSelectedAnalysis.minAllowed;
+        const isHigh = cr.correctedTemp > currentSelectedAnalysis.maxAllowed;
+        failingSensors[cr.channelId] = {
+          channelId: cr.channelId,
+          channelNumber: cr.channelNumber,
+          label: cr.label,
+          reading: cr.rawReading,
+          correctedTemp: cr.correctedTemp,
+          deltaFromTarget: cr.deltaFromTarget,
+          reason: isLow ? 'low' : isHigh ? 'high' : 'spread',
+          targetTemp: currentSelectedSetpoint.targetTemp,
+          tolerance: currentSelectedAnalysis.tolerance,
+        };
+      } else if (cr.failed) {
+        failingSensors[cr.channelId] = {
+          channelId: cr.channelId,
+          channelNumber: cr.channelNumber,
+          label: cr.label,
+          reading: cr.rawReading,
+          correctedTemp: cr.correctedTemp,
+          deltaFromTarget: cr.deltaFromTarget,
+          reason: 'open',
+          targetTemp: currentSelectedSetpoint.targetTemp,
+          tolerance: currentSelectedAnalysis.tolerance,
+        };
+      }
+    });
+
+    // 2. If spread failed and extremes weren't flagged
+    if (currentSelectedAnalysis.uniformitySpread > currentSelectedAnalysis.tolerance * 2) {
+      let minCh = currentSelectedAnalysis.channelResults[0];
+      let maxCh = currentSelectedAnalysis.channelResults[0];
+      currentSelectedAnalysis.channelResults.forEach((cr) => {
+        if (!cr.failed) {
+          if (cr.correctedTemp < minCh.correctedTemp) minCh = cr;
+          if (cr.correctedTemp > maxCh.correctedTemp) maxCh = cr;
+        }
+      });
+      if (minCh && !failingSensors[minCh.channelId]) {
+        failingSensors[minCh.channelId] = {
+          channelId: minCh.channelId,
+          channelNumber: minCh.channelNumber,
+          label: minCh.label,
+          reading: minCh.rawReading,
+          correctedTemp: minCh.correctedTemp,
+          deltaFromTarget: minCh.deltaFromTarget,
+          reason: 'low',
+          targetTemp: currentSelectedSetpoint.targetTemp,
+          tolerance: currentSelectedAnalysis.tolerance,
+        };
+      }
+      if (maxCh && !failingSensors[maxCh.channelId]) {
+        failingSensors[maxCh.channelId] = {
+          channelId: maxCh.channelId,
+          channelNumber: maxCh.channelNumber,
+          label: maxCh.label,
+          reading: maxCh.rawReading,
+          correctedTemp: maxCh.correctedTemp,
+          deltaFromTarget: maxCh.deltaFromTarget,
+          reason: 'high',
+          targetTemp: currentSelectedSetpoint.targetTemp,
+          tolerance: currentSelectedAnalysis.tolerance,
+        };
+      }
+    }
+
+    const failedCount = Object.keys(failingSensors).length;
+    if (failedCount > 0) {
+      reasons.push(`${failedCount} sensor(s) breached Class ${meta.furnaceClass} tolerance band (±${currentSelectedAnalysis.tolerance}${tempUnit})`);
+    }
+    if (currentSelectedSetpoint.maxOvershootObserved > currentSelectedAnalysis.maxAllowed) {
+      reasons.push(`Overshoot exceeded upper tolerance limit (${currentSelectedSetpoint.maxOvershootObserved}${tempUnit} > ${currentSelectedAnalysis.maxAllowed}${tempUnit})`);
+    }
+    if (currentSelectedAnalysis.sensorFailureNote) {
+      reasons.push(currentSelectedAnalysis.sensorFailureNote);
+    }
+
+    return {
+      setpointId: currentSelectedSetpoint.id,
+      targetTemp: currentSelectedSetpoint.targetTemp,
+      tempUnit,
+      tolerance: currentSelectedAnalysis.tolerance,
+      minAllowed: currentSelectedAnalysis.minAllowed,
+      maxAllowed: currentSelectedAnalysis.maxAllowed,
+      failedCount,
+      totalCount: channels.length,
+      reasons,
+      failingSensors,
+    };
+  }, [currentSelectedSetpoint, currentSelectedAnalysis, channels, meta.furnaceClass, tempUnit]);
+
   // Auto-synchronize Audit Criteria Verification Matrix with field completeness & live TUS results
   useEffect(() => {
     setChecklist((prevChecklist) => {
@@ -946,6 +1103,7 @@ export default function App() {
               onSelectChannel={setSelectedChannelId}
               onUpdateChannels={setChannels}
               onExportImageReady={setDiagramImageBase64}
+              activeFailedSetpoint={activeFailedSetpoint}
             />
           </div>
 
@@ -965,6 +1123,7 @@ export default function App() {
               if (tab === 'channels') setActiveStep('layout');
               if (tab === 'equipment') setActiveStep('traceability');
             }}
+            activeFailedSetpoint={activeFailedSetpoint}
           />
         </div>
 
@@ -1229,7 +1388,21 @@ export default function App() {
             )}
 
             {activeStep === 'analysis' && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                {classChangeNotice && (
+                  <div className="p-3.5 rounded-xl bg-indigo-950/90 border border-indigo-700 text-indigo-200 text-xs flex items-center justify-between gap-3 shadow-lg animate-fadeIn">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-indigo-400 shrink-0" />
+                      <span>{classChangeNotice}</span>
+                    </div>
+                    <button
+                      onClick={() => setClassChangeNotice(null)}
+                      className="text-indigo-400 hover:text-white"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
                 <SurveyDataSection
                   setpoints={setpoints}
                   channels={channels}
@@ -1238,11 +1411,18 @@ export default function App() {
                   instrumentCorrection={instrument.instrumentCorrection ?? 0}
                   meta={meta}
                   qwz={qwz}
+                  activeSetpointId={activeSetpointId}
+                  onSelectSetpoint={setActiveSetpointId}
+                  onSelectChannel={setSelectedChannelId}
                   onUpdateSetpoints={setSetpoints}
                   onUpdateChannels={setChannels}
                   onUpdateMeta={setMeta}
                   onUpdateTrendData={setTrendData}
                   onUpdateDwellPeriods={setDwellPeriods}
+                  onUpdateRawRows={(rows, maps) => {
+                    setRawCsvRows(rows);
+                    setCsvMappings(maps);
+                  }}
                   onOpenMethodology={() => setMethodologyModalOpen(true)}
                 />
               </div>
