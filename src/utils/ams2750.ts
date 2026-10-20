@@ -49,6 +49,76 @@ export function calculateVolumeInCuFt(qwz: QualifiedWorkZone, dimUnit: DimUnit):
  * - ≥ 3 and < 225 ft³ (≥ 0.085 and < 6.4 m³): 9 sensors (8 corners + 1 center)
  * - ≥ 225 ft³ (≥ 6.4 m³): See Table 18 (depends on Furnace Class 1–2 vs 3–6, via Table 18 brackets or formula)
  */
+export interface SymmetryAnalysis {
+  isSymmetrical: boolean;
+  hasCenterSensor: boolean;
+  currentCount: number;
+  recommendedCount: number;
+  additionalNeeded: number;
+  symmetryType: string;
+  description: string;
+  recommendationNote: string;
+}
+
+/**
+ * Evaluates whether a sensor count forms a fully 3D symmetrical layout with 1 sensor dead center.
+ * If asymmetrical, recommends the nearest higher symmetrical count.
+ */
+export function getSymmetryAnalysis(count: number): SymmetryAnalysis {
+  const symmetricalTiers = [
+    { count: 5, type: '5-Point Cross', name: '5-Point Cross (1 Center + 4 Corners)' },
+    { count: 9, type: '9-Point Cube', name: '9-Point Cube (1 Center + 8 Corners)' },
+    { count: 15, type: '15-Point Symmetrical Cube', name: '15-Point Symmetrical (1 Center + 8 Corners + 6 Face Centers)' },
+    { count: 21, type: '21-Point Symmetrical Cube', name: '21-Point Symmetrical (1 Center + 8 Corners + 12 Edge Mids)' },
+    { count: 27, type: '27-Point Symmetrical Grid', name: '27-Point Full Grid (3x3x3 Symmetrical Cube)' },
+    { count: 33, type: '33-Point Symmetrical Grid', name: '33-Point Symmetrical (1 Center + 8 Corners + 24 Edge Quarters)' },
+    { count: 45, type: '45-Point High-Density Grid', name: '45-Point Symmetrical (1 Center + 8 Corners + 12 Edge Mids + 24 Quarters)' },
+    { count: 51, type: '51-Point High-Density Grid', name: '51-Point Symmetrical (1 Center + 8 Corners + 6 Faces + 12 Edges + 24 Quarters)' },
+    { count: 65, type: '65-Point High-Density Grid', name: '65-Point Symmetrical Shell Grid' },
+  ];
+
+  const match = symmetricalTiers.find((t) => t.count === count);
+
+  if (match) {
+    return {
+      isSymmetrical: true,
+      hasCenterSensor: true,
+      currentCount: count,
+      recommendedCount: count,
+      additionalNeeded: 0,
+      symmetryType: match.type,
+      description: match.name,
+      recommendationNote: `Sensor layout has ${count} sensors arranged in a 100% 3D symmetrical pattern with 1 sensor fixed dead center at the QWZ geometric hub.`,
+    };
+  }
+
+  const nextTier = symmetricalTiers.find((t) => t.count > count) || {
+    count: Math.ceil(count / 2) * 2 + 1,
+    name: `${Math.ceil(count / 2) * 2 + 1}-Point Symmetrical Grid`,
+    type: 'Custom Symmetrical',
+  };
+
+  const additionalNeeded = nextTier.count - count;
+
+  return {
+    isSymmetrical: false,
+    hasCenterSensor: true,
+    currentCount: count,
+    recommendedCount: nextTier.count,
+    additionalNeeded,
+    symmetryType: 'Asymmetrical',
+    description: `Asymmetrical ${count}-Sensor Layout`,
+    recommendationNote: `The minimum required count of ${count} sensors creates an asymmetrical layout. We recommend adding ${additionalNeeded} sensor${additionalNeeded > 1 ? 's' : ''} (total ${nextTier.count} sensors: ${nextTier.name}) to keep the layout 100% 3D symmetrical while maintaining 1 sensor fixed dead center at the QWZ geometric hub.`,
+  };
+}
+
+/**
+ * AMS 2750 Rev H Table 17 (p. 44) & Table 18 (p. 45):
+ * Minimum Number of TUS Sensors (Volumetric Method)
+ * - < 3 ft³ (< 0.085 m³): 5 sensors (4 alternating corners + 1 center per Figure 1; 9-sensor layout also permitted per Table 17 Note 1)
+ * - ≥ 3 and < 225 ft³ (≥ 0.085 and < 6.4 m³): 9 sensors (8 corners + 1 center)
+ * - ≥ 225 ft³ (≥ 6.4 m³): See Table 18 (depends on Furnace Class 1–2 vs 3–6, via Table 18 brackets or formula)
+ */
 export function getMinRequiredSensors(
   volumeCuFt: number,
   volumeM3?: number,
@@ -61,91 +131,86 @@ export function getMinRequiredSensors(
   volumeCuFtVal: number;
   baselineSensors: number;
   additionalSensors: number;
+  isSymmetrical: boolean;
+  recommendedSensors: number;
+  additionalNeededForSymmetry: number;
+  symmetryNote: string;
 } {
   const volM3 = volumeM3 !== undefined ? volumeM3 : volumeCuFt * 0.0283168;
   const volCuFt = volumeCuFt !== undefined ? volumeCuFt : volM3 * 35.3147;
 
+  let minSensors = 9;
+  let ruleText = '';
+  let formulaBreakdown = '';
+  let baselineSensors = 9;
+  let additionalSensors = 0;
+
   if (volM3 <= 0 || volCuFt <= 0) {
-    return {
-      minSensors: 5,
-      ruleText: `AMS 2750 Rev H Table 17: Enter work zone dimensions (> 0) to calculate volume. Volumes < 0.085 m³ (< 3 ft³) require a minimum of 5 sensors (4 corners + 1 center per Figure 1).`,
-      formulaBreakdown: `Work zone volume is currently 0.000 m³ (0.0 ft³). Per AMS 2750 Rev H Table 17, volumes < 0.085 m³ (< 3 ft³) require 5 sensors minimum (or 9 sensors per Table 17 Note 1), and volumes ≥ 0.085 m³ to < 6.4 m³ (3 to < 225 ft³) require 9 sensors.`,
-      volumeM3Val: 0,
-      volumeCuFtVal: 0,
-      baselineSensors: 5,
-      additionalSensors: 0,
-    };
-  }
+    minSensors = 5;
+    baselineSensors = 5;
+    ruleText = `AMS 2750 Rev H Table 17: Enter work zone dimensions (> 0) to calculate volume. Volumes < 0.085 m³ (< 3 ft³) require a minimum of 5 sensors (4 corners + 1 center per Figure 1).`;
+    formulaBreakdown = `Work zone volume is currently 0.000 m³ (0.0 ft³). Per AMS 2750 Rev H Table 17, volumes < 0.085 m³ (< 3 ft³) require 5 sensors minimum (or 9 sensors per Table 17 Note 1), and volumes ≥ 0.085 m³ to < 6.4 m³ (3 to < 225 ft³) require 9 sensors.`;
+  } else if (volM3 < 0.085 && volCuFt < 3) {
+    minSensors = 5;
+    baselineSensors = 5;
+    ruleText = `AMS 2750 Rev H Table 17: Work zone volume ${volM3.toFixed(3)} m³ (${volCuFt.toFixed(2)} ft³) is < 0.085 m³ (< 3 ft³) and requires a minimum of 5 sensors (4 corners + 1 center per Figure 1; 9 sensors optional per Note 1).`;
+    formulaBreakdown = `Volume ${volM3.toFixed(3)} m³ (${volCuFt.toFixed(2)} ft³) is below 0.085 m³ (3 ft³), requiring 5 sensors minimum (4 alternating corners + 1 center per Figure 1) under AMS 2750 Rev H Table 17 (Note 1 also permits using the 9-sensor layout).`;
+  } else if (volM3 < 6.4 && volCuFt < 225) {
+    minSensors = 9;
+    baselineSensors = 9;
+    ruleText = `AMS 2750 Rev H Table 17: Work zone volume ${volM3.toFixed(2)} m³ (${volCuFt.toFixed(1)} ft³) is between 0.085 and 6.4 m³ (3 to < 225 ft³), requiring a minimum of 9 sensors (8 corners + 1 center).`;
+    formulaBreakdown = `Volume ${volM3.toFixed(2)} m³ (${volCuFt.toFixed(1)} ft³) is within ≥ 0.085 to < 6.4 m³ (≥ 3 to < 225 ft³), requiring the baseline 9 sensors (8 corners + 1 geometric center) per AMS 2750 Rev H Table 17 & Figure 1.`;
+  } else {
+    const isClass1Or2 = furnaceClass === 1 || furnaceClass === 2;
+    const table18Brackets = [
+      { maxCuFt: 300, maxM3: 8.5, c12: 14, c36: 12 },
+      { maxCuFt: 400, maxM3: 11, c12: 16, c36: 13 },
+      { maxCuFt: 600, maxM3: 17, c12: 19, c36: 14 },
+      { maxCuFt: 800, maxM3: 23, c12: 21, c36: 15 },
+      { maxCuFt: 1000, maxM3: 28, c12: 23, c36: 16 },
+      { maxCuFt: 2000, maxM3: 57, c12: 30, c36: 20 },
+      { maxCuFt: 3000, maxM3: 85, c12: 35, c36: 23 },
+      { maxCuFt: 4000, maxM3: 113, c12: 40, c36: 25 },
+    ];
 
-  // Bracket 1: < 3 ft³ (< 0.085 m³) -> 5 sensors per Table 17
-  if (volM3 < 0.085 && volCuFt < 3) {
-    return {
-      minSensors: 5,
-      ruleText: `AMS 2750 Rev H Table 17: Work zone volume ${volM3.toFixed(3)} m³ (${volCuFt.toFixed(2)} ft³) is < 0.085 m³ (< 3 ft³) and requires a minimum of 5 sensors (4 corners + 1 center per Figure 1; 9 sensors optional per Note 1).`,
-      formulaBreakdown: `Volume ${volM3.toFixed(3)} m³ (${volCuFt.toFixed(2)} ft³) is below 0.085 m³ (3 ft³), requiring 5 sensors minimum (4 alternating corners + 1 center per Figure 1) under AMS 2750 Rev H Table 17 (Note 1 also permits using the 9-sensor layout).`,
-      volumeM3Val: volM3,
-      volumeCuFtVal: volCuFt,
-      baselineSensors: 5,
-      additionalSensors: 0,
-    };
-  }
+    let foundBracket = false;
+    for (const b of table18Brackets) {
+      if (volCuFt < b.maxCuFt || volM3 < b.maxM3) {
+        minSensors = isClass1Or2 ? b.c12 : b.c36;
+        additionalSensors = minSensors - 9;
+        baselineSensors = 9;
+        ruleText = `AMS 2750 Rev H Table 18 (Class ${furnaceClass}): Volume ${volM3.toFixed(2)} m³ (${volCuFt.toFixed(1)} ft³) < ${b.maxM3} m³ (${b.maxCuFt} ft³) requires ${minSensors} sensors (8 corners + 1 center + ${additionalSensors} distributed).`;
+        formulaBreakdown = `Per AMS 2750 Rev H Table 17 & Table 18 (Furnace Class ${furnaceClass}, volume < ${b.maxM3} m³ / ${b.maxCuFt} ft³): 9 baseline sensors + ${additionalSensors} uniformly distributed sensors = ${minSensors} Sensors Minimum.`;
+        foundBracket = true;
+        break;
+      }
+    }
 
-  // Bracket 2: ≥ 3 ft³ and < 225 ft³ (≥ 0.085 m³ and < 6.4 m³) -> 9 sensors per Table 17
-  if (volM3 < 6.4 && volCuFt < 225) {
-    return {
-      minSensors: 9,
-      ruleText: `AMS 2750 Rev H Table 17: Work zone volume ${volM3.toFixed(2)} m³ (${volCuFt.toFixed(1)} ft³) is between 0.085 and 6.4 m³ (3 to < 225 ft³), requiring a minimum of 9 sensors (8 corners + 1 center).`,
-      formulaBreakdown: `Volume ${volM3.toFixed(2)} m³ (${volCuFt.toFixed(1)} ft³) is within ≥ 0.085 to < 6.4 m³ (≥ 3 to < 225 ft³), requiring the baseline 9 sensors (8 corners + 1 geometric center) per AMS 2750 Rev H Table 17 & Figure 1.`,
-      volumeM3Val: volM3,
-      volumeCuFtVal: volCuFt,
-      baselineSensors: 9,
-      additionalSensors: 0,
-    };
-  }
-
-  // Bracket 3: ≥ 225 ft³ (≥ 6.4 m³) -> Table 18 (depends on Furnace Class 1–2 vs 3–6)
-  const isClass1Or2 = furnaceClass === 1 || furnaceClass === 2;
-  const table18Brackets: Array<{ maxCuFt: number; maxM3: number; c12: number; c36: number }> = [
-    { maxCuFt: 300, maxM3: 8.5, c12: 14, c36: 12 },
-    { maxCuFt: 400, maxM3: 11, c12: 16, c36: 13 },
-    { maxCuFt: 600, maxM3: 17, c12: 19, c36: 14 },
-    { maxCuFt: 800, maxM3: 23, c12: 21, c36: 15 },
-    { maxCuFt: 1000, maxM3: 28, c12: 23, c36: 16 },
-    { maxCuFt: 2000, maxM3: 57, c12: 30, c36: 20 },
-    { maxCuFt: 3000, maxM3: 85, c12: 35, c36: 23 },
-    { maxCuFt: 4000, maxM3: 113, c12: 40, c36: 25 },
-  ];
-
-  for (const b of table18Brackets) {
-    if (volCuFt < b.maxCuFt || volM3 < b.maxM3) {
-      const minSensors = isClass1Or2 ? b.c12 : b.c36;
-      const additional = minSensors - 9;
-      return {
-        minSensors,
-        ruleText: `AMS 2750 Rev H Table 18 (Class ${furnaceClass}): Volume ${volM3.toFixed(2)} m³ (${volCuFt.toFixed(1)} ft³) < ${b.maxM3} m³ (${b.maxCuFt} ft³) requires ${minSensors} sensors (8 corners + 1 center + ${additional} distributed).`,
-        formulaBreakdown: `Per AMS 2750 Rev H Table 17 & Table 18 (Furnace Class ${furnaceClass}, volume < ${b.maxM3} m³ / ${b.maxCuFt} ft³): 9 baseline sensors + ${additional} uniformly distributed sensors = ${minSensors} Sensors Minimum.`,
-        volumeM3Val: volM3,
-        volumeCuFtVal: volCuFt,
-        baselineSensors: 9,
-        additionalSensors: additional,
-      };
+    if (!foundBracket) {
+      const factor = isClass1Or2 ? 0.5 : 0.25;
+      const excessCuFt = Math.max(0, volCuFt - 225);
+      additionalSensors = Math.ceil(factor * Math.sqrt(excessCuFt));
+      minSensors = 9 + additionalSensors;
+      baselineSensors = 9;
+      ruleText = `AMS 2750 Rev H Table 18 Note 1 (Class ${furnaceClass}): Volume ${volM3.toFixed(2)} m³ (${volCuFt.toFixed(0)} ft³) requires 9 + ${isClass1Or2 ? '1/2' : '1/4'}×√(${volCuFt.toFixed(0)} - 225) = ${minSensors} sensors.`;
+      formulaBreakdown = `Baseline 9 sensors + ${additionalSensors} additional sensors via Table 18 Note 1 formula [9 + ${isClass1Or2 ? '1/2' : '1/4'} × √(Vol_ft³ - 225)] = ${minSensors} Sensors Minimum.`;
     }
   }
 
-  // > 4000 ft³ (113 m³): Table 18 Note 1 Formula
-  const factor = isClass1Or2 ? 0.5 : 0.25;
-  const excessCuFt = Math.max(0, volCuFt - 225);
-  const additional = Math.ceil(factor * Math.sqrt(excessCuFt));
-  const minSensors = 9 + additional;
+  const sym = getSymmetryAnalysis(minSensors);
 
   return {
     minSensors,
-    ruleText: `AMS 2750 Rev H Table 18 Note 1 (Class ${furnaceClass}): Volume ${volM3.toFixed(2)} m³ (${volCuFt.toFixed(0)} ft³) requires 9 + ${isClass1Or2 ? '1/2' : '1/4'}×√(${volCuFt.toFixed(0)} - 225) = ${minSensors} sensors.`,
-    formulaBreakdown: `Baseline 9 sensors + ${additional} additional sensors via Table 18 Note 1 formula [9 + ${isClass1Or2 ? '1/2' : '1/4'} × √(Vol_ft³ - 225)] = ${minSensors} Sensors Minimum.`,
+    ruleText,
+    formulaBreakdown,
     volumeM3Val: volM3,
     volumeCuFtVal: volCuFt,
-    baselineSensors: 9,
-    additionalSensors: additional,
+    baselineSensors,
+    additionalSensors,
+    isSymmetrical: sym.isSymmetrical,
+    recommendedSensors: sym.recommendedCount,
+    additionalNeededForSymmetry: sym.additionalNeeded,
+    symmetryNote: sym.recommendationNote,
   };
 }
 
@@ -241,66 +306,13 @@ export function generateStandardAMS2750Sensors(
   const zMax = qwz.offsetLeft + qwz.width;
   const zMid = (zMin + zMax) / 2;
 
-  // Handle specific high-density symmetrical layouts
-  if (count === 36) {
-    const points: Array<{ label: string; x: number; y: number; z: number }> = [];
-    const xPositions = [xMin, xMin + qwz.length / 3, xMin + (qwz.length * 2) / 3, xMax];
-    const yPositions = [yMin, yMid, yMax];
-    const zPositions = [zMin, zMid, zMax];
-
-    let tcNum = 1;
-    xPositions.forEach((x, xi) => {
-      yPositions.forEach((y, yi) => {
-        zPositions.forEach((z, zi) => {
-          const xLabel = xi === 0 ? 'Front' : xi === 3 ? 'Rear' : `Plane ${xi + 1}`;
-          const yLabel = yi === 0 ? 'Bottom' : yi === 1 ? 'Mid' : 'Top';
-          const zLabel = zi === 0 ? 'Left' : zi === 1 ? 'Center' : 'Right';
-          points.push({
-            label: `${xLabel} ${yLabel} ${zLabel}`,
-            x, y, z
-          });
-        });
-      });
-    });
-    // This generates exactly 4 * 3 * 3 = 36 points
-    return points.map((p, idx) => {
-      const channelNumber = idx + 1;
-      const dist = computeSensorDistances(p.x, p.y, p.z, chamber);
-      const qL = Math.max(1, qwz.length);
-      const qH = Math.max(1, qwz.height);
-      const qW = Math.max(1, qwz.width);
-      const ux = Math.max(0, Math.min(1, (p.x - qwz.offsetFront) / qL));
-      const uy = Math.max(0, Math.min(1, (p.y - qwz.offsetFloor) / qH));
-      const uz = Math.max(0, Math.min(1, (p.z - qwz.offsetLeft) / qW));
-
-      const today = new Date().toISOString().split('T')[0];
-      const expiry = new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString().split('T')[0];
-
-      return {
-        id: `tc-${channelNumber}`,
-        channelNumber,
-        label: p.label,
-        type: 'N',
-        rollLotNumber: '',
-        calibrationDate: today,
-        expirationDate: expiry,
-        recorderChannel: `CH-${String(channelNumber).padStart(2, '0')}`,
-        ...dist,
-        x: p.x,
-        y: p.y,
-        z: p.z,
-        ux, uy, uz,
-        correctionFactors: {}
-      };
-    });
-  }
-
   // Handle 5-sensor layout for < 3 ft³ (< 0.085 m³) per AMS 2750 Rev H Table 17 & Figure 1
+  // Sensor #1 is ALWAYS Geometric Center
   if (count === 5) {
     const points5: Array<{ label: string; x: number; y: number; z: number }> = [
+      { label: 'Geometric Center (Spider Hub)', x: xMid, y: yMid, z: zMid },
       { label: 'Front Upper Left Corner (Loc 1)', x: xMin, y: yMax, z: zMin },
       { label: 'Front Lower Right Corner (Loc 4)', x: xMin, y: yMin, z: zMax },
-      { label: 'Geometric Center (Loc 5)', x: xMid, y: yMid, z: zMid },
       { label: 'Rear Lower Left Corner (Loc 7)', x: xMax, y: yMin, z: zMin },
       { label: 'Rear Upper Right Corner (Loc 8)', x: xMax, y: yMax, z: zMax },
     ];
@@ -308,7 +320,7 @@ export function generateStandardAMS2750Sensors(
     const qH = Math.max(1, qwz.height);
     const qW = Math.max(1, qwz.width);
     const today = new Date().toISOString().split('T')[0];
-    const expiry = new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().split('T')[0];
+    const expiry = new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString().split('T')[0];
 
     return points5.map((p, idx) => {
       const channelNumber = idx + 1;
@@ -337,21 +349,22 @@ export function generateStandardAMS2750Sensors(
     });
   }
 
+  // Master Symmetrical Pool: Point #1 is ALWAYS Geometric Center (Dead Center of QWZ)
   const pool: Array<{ label: string; x: number; y: number; z: number }> = [
-    // 1. Center Hub (Critical Anchor)
+    // 1. Center Hub (Critical Anchor - DEAD CENTER)
     { label: 'Geometric Center (Spider Hub)', x: xMid, y: yMid, z: zMid },
 
     // 2. 8 Corners (Standard Envelope)
     { label: 'Front Upper Left Corner', x: xMin, y: yMax, z: zMin },
-    { label: 'Front Upper Right Corner', x: xMin, y: yMax, z: zMax },
-    { label: 'Front Lower Left Corner', x: xMin, y: yMin, z: zMin },
+    { label: 'Rear Lower Right Corner', x: xMax, y: yMin, z: zMax },
     { label: 'Front Lower Right Corner', x: xMin, y: yMin, z: zMax },
     { label: 'Rear Upper Left Corner', x: xMax, y: yMax, z: zMin },
-    { label: 'Rear Upper Right Corner', x: xMax, y: yMax, z: zMax },
+    { label: 'Front Upper Right Corner', x: xMin, y: yMax, z: zMax },
     { label: 'Rear Lower Left Corner', x: xMax, y: yMin, z: zMin },
-    { label: 'Rear Lower Right Corner', x: xMax, y: yMin, z: zMax },
+    { label: 'Front Lower Left Corner', x: xMin, y: yMin, z: zMin },
+    { label: 'Rear Upper Right Corner', x: xMax, y: yMax, z: zMax },
 
-    // 3. 6 Face Centers (Standard for 13/14/15 point TUS)
+    // 3. 6 Face Centers (Standard for 15-point symmetrical TUS)
     { label: 'Top Face Center', x: xMid, y: yMax, z: zMid },
     { label: 'Bottom Face Center', x: xMid, y: yMin, z: zMid },
     { label: 'Left Face Center', x: xMid, y: yMid, z: zMin },
@@ -359,56 +372,50 @@ export function generateStandardAMS2750Sensors(
     { label: 'Front Face Center', x: xMin, y: yMid, z: zMid },
     { label: 'Rear Face Center', x: xMax, y: yMid, z: zMid },
 
-    // 4. 12 Edge Centers (Refinement for High-Density 27 point TUS)
+    // 4. 12 Edge Centers (Refinement for 21/27 point TUS)
     { label: 'Front Top Edge Mid', x: xMin, y: yMax, z: zMid },
-    { label: 'Front Bottom Edge Mid', x: xMin, y: yMin, z: zMid },
-    { label: 'Front Left Edge Mid', x: xMin, y: yMid, z: zMin },
-    { label: 'Front Right Edge Mid', x: xMin, y: yMid, z: zMax },
-    { label: 'Rear Top Edge Mid', x: xMax, y: yMax, z: zMid },
     { label: 'Rear Bottom Edge Mid', x: xMax, y: yMin, z: zMid },
-    { label: 'Rear Left Edge Mid', x: xMax, y: yMid, z: zMin },
-    { label: 'Rear Right Edge Mid', x: xMax, y: yMid, z: zMax },
+    { label: 'Front Bottom Edge Mid', x: xMin, y: yMin, z: zMid },
+    { label: 'Rear Top Edge Mid', x: xMax, y: yMax, z: zMid },
     { label: 'Top Left Edge Mid', x: xMid, y: yMax, z: zMin },
-    { label: 'Top Right Edge Mid', x: xMid, y: yMax, z: zMax },
-    { label: 'Bottom Left Edge Mid', x: xMid, y: yMin, z: zMin },
     { label: 'Bottom Right Edge Mid', x: xMid, y: yMin, z: zMax },
+    { label: 'Bottom Left Edge Mid', x: xMid, y: yMin, z: zMin },
+    { label: 'Top Right Edge Mid', x: xMid, y: yMax, z: zMax },
+    { label: 'Front Left Edge Mid', x: xMin, y: yMid, z: zMin },
+    { label: 'Rear Right Edge Mid', x: xMax, y: yMid, z: zMax },
+    { label: 'Front Right Edge Mid', x: xMin, y: yMid, z: zMax },
+    { label: 'Rear Left Edge Mid', x: xMax, y: yMid, z: zMin },
 
-    // 5. 24 Edge Quarters (Symmetrical quads for balanced high-density layouts)
-    // Quad A: Front Face Horizontals
+    // 5. 24 Edge Quarters (Symmetrical quads for 33/45/51 point layouts)
     { label: 'Front Top Edge 1/4', x: xMin, y: yMax, z: zMin + qwz.width * 0.25 },
-    { label: 'Front Top Edge 3/4', x: xMin, y: yMax, z: zMin + qwz.width * 0.75 },
-    { label: 'Front Bottom Edge 1/4', x: xMin, y: yMin, z: zMin + qwz.width * 0.25 },
-    { label: 'Front Bottom Edge 3/4', x: xMin, y: yMin, z: zMin + qwz.width * 0.75 },
-
-    // Quad B: Rear Face Horizontals
-    { label: 'Rear Top Edge 1/4', x: xMax, y: yMax, z: zMin + qwz.width * 0.25 },
-    { label: 'Rear Top Edge 3/4', x: xMax, y: yMax, z: zMin + qwz.width * 0.75 },
-    { label: 'Rear Bottom Edge 1/4', x: xMax, y: yMin, z: zMin + qwz.width * 0.25 },
     { label: 'Rear Bottom Edge 3/4', x: xMax, y: yMin, z: zMin + qwz.width * 0.75 },
+    { label: 'Front Top Edge 3/4', x: xMin, y: yMax, z: zMin + qwz.width * 0.75 },
+    { label: 'Rear Bottom Edge 1/4', x: xMax, y: yMin, z: zMin + qwz.width * 0.25 },
 
-    // Quad C: Top Face Lengths
+    { label: 'Front Bottom Edge 1/4', x: xMin, y: yMin, z: zMin + qwz.width * 0.25 },
+    { label: 'Rear Top Edge 3/4', x: xMax, y: yMax, z: zMin + qwz.width * 0.75 },
+    { label: 'Front Bottom Edge 3/4', x: xMin, y: yMin, z: zMin + qwz.width * 0.75 },
+    { label: 'Rear Top Edge 1/4', x: xMax, y: yMax, z: zMin + qwz.width * 0.25 },
+
     { label: 'Top Left Edge 1/4', x: xMin + qwz.length * 0.25, y: yMax, z: zMin },
-    { label: 'Top Left Edge 3/4', x: xMin + qwz.length * 0.75, y: yMax, z: zMin },
-    { label: 'Top Right Edge 1/4', x: xMin + qwz.length * 0.25, y: yMax, z: zMax },
-    { label: 'Top Right Edge 3/4', x: xMin + qwz.length * 0.75, y: yMax, z: zMax },
-
-    // Quad D: Bottom Face Lengths
-    { label: 'Bottom Left Edge 1/4', x: xMin + qwz.length * 0.25, y: yMin, z: zMin },
-    { label: 'Bottom Left Edge 3/4', x: xMin + qwz.length * 0.75, y: yMin, z: zMin },
-    { label: 'Bottom Right Edge 1/4', x: xMin + qwz.length * 0.25, y: yMin, z: zMax },
     { label: 'Bottom Right Edge 3/4', x: xMin + qwz.length * 0.75, y: yMin, z: zMax },
+    { label: 'Top Left Edge 3/4', x: xMin + qwz.length * 0.75, y: yMax, z: zMin },
+    { label: 'Bottom Right Edge 1/4', x: xMin + qwz.length * 0.25, y: yMin, z: zMax },
 
-    // Quad E: Front/Rear Vertical Posts
+    { label: 'Top Right Edge 1/4', x: xMin + qwz.length * 0.25, y: yMax, z: zMax },
+    { label: 'Bottom Left Edge 3/4', x: xMin + qwz.length * 0.75, y: yMin, z: zMin },
+    { label: 'Top Right Edge 3/4', x: xMin + qwz.length * 0.75, y: yMax, z: zMax },
+    { label: 'Bottom Left Edge 1/4', x: xMin + qwz.length * 0.25, y: yMin, z: zMin },
+
     { label: 'Front Left Edge 1/4', x: xMin, y: yMin + qwz.height * 0.25, z: zMin },
-    { label: 'Front Left Edge 3/4', x: xMin, y: yMin + qwz.height * 0.75, z: zMin },
-    { label: 'Front Right Edge 1/4', x: xMin, y: yMin + qwz.height * 0.25, z: zMax },
-    { label: 'Front Right Edge 3/4', x: xMin, y: yMin + qwz.height * 0.75, z: zMax },
-
-    // Quad F: Rear Vertical Posts
-    { label: 'Rear Left Edge 1/4', x: xMax, y: yMin + qwz.height * 0.25, z: zMin },
-    { label: 'Rear Left Edge 3/4', x: xMax, y: yMin + qwz.height * 0.75, z: zMin },
-    { label: 'Rear Right Edge 1/4', x: xMax, y: yMin + qwz.height * 0.25, z: zMax },
     { label: 'Rear Right Edge 3/4', x: xMax, y: yMin + qwz.height * 0.75, z: zMax },
+    { label: 'Front Left Edge 3/4', x: xMin, y: yMin + qwz.height * 0.75, z: zMin },
+    { label: 'Rear Right Edge 1/4', x: xMax, y: yMin + qwz.height * 0.25, z: zMax },
+
+    { label: 'Front Right Edge 1/4', x: xMin, y: yMin + qwz.height * 0.25, z: zMax },
+    { label: 'Rear Left Edge 3/4', x: xMax, y: yMin + qwz.height * 0.75, z: zMin },
+    { label: 'Front Right Edge 3/4', x: xMin, y: yMin + qwz.height * 0.75, z: zMax },
+    { label: 'Rear Left Edge 1/4', x: xMax, y: yMin + qwz.height * 0.25, z: zMin },
   ];
 
   // Select points from pool based on count
@@ -417,15 +424,20 @@ export function generateStandardAMS2750Sensors(
     rawList.push({ num: i + 1, ...pool[i] });
   }
 
-  // If user requested more than pool, subdivide internal volume or add random-ish but zone-compliant points
+  // If user requested more than pool length, add symmetrical sub-grid internal volume points
   if (count > pool.length) {
     for (let i = pool.length + 1; i <= count; i++) {
+      const idxInExtra = i - pool.length - 1;
+      const fracX = (idxInExtra % 3) === 0 ? 0.25 : (idxInExtra % 3) === 1 ? 0.75 : 0.5;
+      const fracY = Math.floor(idxInExtra / 3) % 2 === 0 ? 0.25 : 0.75;
+      const fracZ = Math.floor(idxInExtra / 6) % 2 === 0 ? 0.25 : 0.75;
+
       rawList.push({
         num: i,
         label: `TC ${i}: Internal Grid Point`,
-        x: xMin + Math.random() * (xMax - xMin),
-        y: yMin + Math.random() * (yMax - yMin),
-        z: zMin + Math.random() * (zMax - zMin),
+        x: xMin + qwz.length * fracX,
+        y: yMin + qwz.height * fracY,
+        z: zMin + qwz.width * fracZ,
       });
     }
   }
@@ -892,9 +904,17 @@ export function balanceSensors(
   // Use standard layouts if possible, otherwise distribute logically
   const balanced = generateStandardAMS2750Sensors(chamber, qwz, count);
   
+  // Find channel 1 if present, or fallback to first channel index
+  const ch1Index = channels.findIndex((c) => c.channelNumber === 1);
+
   // Maintain user-defined metadata and channel numbering while updating positions
   return channels.map((ch, idx) => {
-    const balancedPos = balanced[idx] || balanced[balanced.length - 1];
+    let balancedIdx = idx;
+    if (ch1Index !== -1) {
+      if (idx === ch1Index) balancedIdx = 0; // TC 1 gets point 0 (Geometric Center)
+      else if (idx === 0) balancedIdx = ch1Index; // Swap index 0's point to TC 1's old index point
+    }
+    const balancedPos = balanced[balancedIdx] || balanced[balanced.length - 1];
     const baseLoc = formatBaseSensorLocation(balancedPos.label);
     return {
       ...ch,

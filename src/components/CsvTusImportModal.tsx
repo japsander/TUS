@@ -19,6 +19,7 @@ import {
   convertToTrendData,
   convertToDwellPeriods,
 } from '../utils/csvTusParser';
+import { CLASS_TOLERANCES } from '../utils/ams2750';
 import {
   Upload,
   FileText,
@@ -519,11 +520,16 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
                         <span className="text-slate-400">Max Overshoot:</span>
                         <strong className="text-amber-400">{dwell.maxOvershoot} {tempUnit}</strong>
                       </div>
-                      <div className="flex justify-between">
+                      <div className="flex justify-between items-center">
                         <span className="text-slate-400">Window Spread:</span>
-                        <strong className={dwell.isSpreadCompliant ? 'text-emerald-400' : 'text-red-400'}>
-                          {dwell.tempSpread} {tempUnit}
-                        </strong>
+                        <div className="text-right">
+                          <strong className={dwell.tempSpread > (CLASS_TOLERANCES[furnaceClass]?.[tempUnit] ?? 6) * 2 ? 'text-red-400 font-bold' : 'text-emerald-400 font-bold'}>
+                            {dwell.tempSpread} {tempUnit}
+                          </strong>
+                          <span className="text-[9.5px] text-slate-500 block">
+                            (Max Allowable: {(CLASS_TOLERANCES[furnaceClass]?.[tempUnit] ?? 6) * 2} {tempUnit})
+                          </span>
+                        </div>
                       </div>
                       <div className="flex justify-between border-t border-slate-800 pt-1 text-[10px]">
                         <span className="text-slate-500">Channels Read:</span>
@@ -531,6 +537,11 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
                           {Object.keys(dwell.channelReadings).length} of {channels.length}
                         </span>
                       </div>
+                      {!dwell.isSpreadCompliant && (
+                        <div className="text-[10px] text-red-400/90 font-sans italic pt-0.5 border-t border-red-900/40">
+                          ⚠️ One or more sensors breached Class {furnaceClass} band [±{CLASS_TOLERANCES[furnaceClass]?.[tempUnit] ?? 6}{tempUnit}]
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

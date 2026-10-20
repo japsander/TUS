@@ -133,6 +133,10 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
     formulaBreakdown,
     baselineSensors,
     additionalSensors,
+    isSymmetrical,
+    recommendedSensors,
+    additionalNeededForSymmetry,
+    symmetryNote,
   } = getMinRequiredSensors(volumeCuFt, volumeM3);
   const meetsSensorCount = channelCount >= minSensors;
 

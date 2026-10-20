@@ -627,7 +627,47 @@ function findBestPracticeEvalWindow(
     }
   }
 
-  // Rate of climb limit for steady-state evaluation window
+  // 1. Search for earliest 100% compliant 30-minute window within initial soak envelope
+  // where all active sensors stay within [target - tolerance, target + tolerance] throughout the window
+  let compliantStart = -1;
+  for (let i = bestStart; i <= latestAllowedStart; i++) {
+    // Find index k where timestamp reaches +30 min from i
+    let endK = -1;
+    for (let k = i; k <= bestEnd; k++) {
+      if (rows[k].timestampSec - rows[i].timestampSec >= targetWindowSec) {
+        endK = k;
+        break;
+      }
+    }
+    if (endK === -1) break;
+
+    let isFullyCompliantWindow = true;
+    for (let k = i; k <= endK; k++) {
+      const kStats = getRowChannelStats(rows[k], activeMappings);
+      if (kStats.min < target - tolerance || kStats.max > target + tolerance) {
+        isFullyCompliantWindow = false;
+        break;
+      }
+    }
+
+    if (isFullyCompliantWindow) {
+      compliantStart = i;
+      break;
+    }
+  }
+
+  if (compliantStart !== -1) {
+    let compliantEnd = compliantStart;
+    for (let i = compliantStart; i <= bestEnd; i++) {
+      if (rows[i].timestampSec - rows[compliantStart].timestampSec >= targetWindowSec) {
+        compliantEnd = i;
+        break;
+      }
+    }
+    return { evalStart: compliantStart, evalEnd: compliantEnd || bestEnd };
+  }
+
+  // 2. If no 100% compliant window exists (true non-conformance), anchor to initial rate-of-climb stabilization
   const maxClimbLimit = tempUnit === '°C' ? 0.06 : 0.10;
   let chosenStart = bestStart;
   let lowestClimbRate = Infinity;

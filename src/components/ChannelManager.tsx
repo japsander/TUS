@@ -31,6 +31,7 @@ import {
   clearAllSensorNumbers,
   resetSequentialSensorNumbers,
   formatSensorLabelWithNumber,
+  getSymmetryAnalysis,
 } from '../utils/ams2750';
 
 interface ChannelManagerProps {
@@ -378,6 +379,55 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Symmetry Status & Upgrade Recommendation Banner */}
+      {(() => {
+        const sym = getSymmetryAnalysis(channels.length);
+        if (!sym.isSymmetrical) {
+          return (
+            <div className="bg-gradient-to-r from-amber-950/80 via-slate-900 to-slate-900 border border-amber-700/80 rounded-2xl p-3.5 px-4 flex flex-wrap items-center justify-between gap-3 text-xs shadow-lg animate-fadeIn">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 shrink-0">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div className="space-y-0.5 min-w-0">
+                  <div className="font-bold text-amber-200 flex items-center gap-2 flex-wrap">
+                    <span>Asymmetrical Sensor Layout ({channels.length} Sensors)</span>
+                    <span className="text-[10px] bg-amber-900/80 text-amber-300 font-mono px-2 py-0.5 rounded border border-amber-700 font-semibold">
+                      TC 1 Dead Center Fixed
+                    </span>
+                  </div>
+                  <p className="text-slate-300 text-[11px] leading-relaxed">
+                    {sym.recommendationNote}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  const newLayout = generateStandardAMS2750Sensors(chamber, qwz, sym.recommendedCount);
+                  onUpdateChannels(newLayout);
+                  if (newLayout[0]) onSelectChannel(newLayout[0].id);
+                }}
+                className="shrink-0 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-600 to-cyan-600 hover:from-amber-500 hover:to-cyan-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Upgrade to {sym.recommendedCount} Sensors (Symmetrical)</span>
+              </button>
+            </div>
+          );
+        } else {
+          return (
+            <div className="bg-slate-950/60 border border-emerald-900/60 rounded-xl px-3.5 py-2 flex items-center justify-between text-xs text-emerald-300">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>
+                  <strong className="text-emerald-200">100% 3D Symmetrical Layout ({channels.length} Sensors):</strong> TC 1 is fixed dead center at the QWZ geometric hub, surrounded by a fully balanced 3D grid.
+                </span>
+              </div>
+            </div>
+          );
+        }
+      })()}
 
       {/* Unassigned Sensor Mapping Banner */}
       {channels.some((c) => c.channelNumber <= 0) && (

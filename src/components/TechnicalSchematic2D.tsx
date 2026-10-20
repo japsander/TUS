@@ -12,6 +12,9 @@ import {
   clearAllSensorNumbers,
   resetSequentialSensorNumbers,
   formatBaseSensorLocation,
+  balanceSensors,
+  getSymmetryAnalysis,
+  generateStandardAMS2750Sensors,
 } from '../utils/ams2750';
 import {
   Camera,
@@ -522,6 +525,19 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
               <RotateCcw className="w-3 h-3 shrink-0" />
               <span>Reset 1–{channels.length}</span>
             </button>
+            <button
+              onClick={() => {
+                if (onUpdateChannels) {
+                  const balanced = balanceSensors(channels, chamber, qwz);
+                  onUpdateChannels(balanced);
+                }
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-cyan-700 hover:bg-cyan-600 text-white shadow-sm cursor-pointer transition-colors"
+              title="Auto-balance all sensors symmetrically across the QWZ with TC 1 fixed dead center"
+            >
+              <Sparkles className="w-3.5 h-3.5 shrink-0 text-amber-300" />
+              <span>Auto-Balance Sensors</span>
+            </button>
             <span
               className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold ${
                 channels.some((c) => c.channelNumber <= 0)
@@ -537,6 +553,36 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
         ) : (
           <div />
         )}
+
+        {/* Symmetry Upgrade Suggestion Banner when layout is asymmetrical */}
+        {(() => {
+          const sym = getSymmetryAnalysis(channels.length);
+          if (!sym.isSymmetrical && onUpdateChannels) {
+            return (
+              <div className="w-full px-3 py-2 bg-gradient-to-r from-amber-950/90 via-slate-900 to-slate-900 border-t border-amber-700/80 text-amber-200 text-xs flex flex-wrap items-center justify-between gap-2 z-10">
+                <div className="flex items-center gap-2 min-w-0">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <div className="min-w-0 leading-tight">
+                    <span className="font-bold text-amber-200">Asymmetrical Sensor Layout ({channels.length} Sensors): </span>
+                    <span className="text-slate-300 text-[11px]">
+                      TC 1 is fixed dead center. We recommend adding <strong className="text-amber-200">{sym.additionalNeeded}</strong> sensor{sym.additionalNeeded > 1 ? 's' : ''} (total <strong className="text-amber-200">{sym.recommendedCount}</strong>) for 100% 3D geometric symmetry with 1 sensor dead center.
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    const newLayout = generateStandardAMS2750Sensors(chamber, qwz, sym.recommendedCount);
+                    onUpdateChannels(newLayout);
+                  }}
+                  className="px-3 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-cyan-500 hover:from-amber-400 hover:to-cyan-400 text-slate-950 font-bold text-xs shadow-md transition-all cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  Upgrade to {sym.recommendedCount} Symmetrical Sensors
+                </button>
+              </div>
+            );
+          }
+          return null;
+        })()}
 
         {/* Right: View Angle Presets & Export Actions */}
         <div className="flex flex-wrap items-center gap-1">

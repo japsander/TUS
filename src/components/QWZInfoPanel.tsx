@@ -13,6 +13,7 @@ import {
   getMinRequiredSensors,
   getLogicalWireRiggingSchedule,
   formatBaseSensorLocation,
+  getSymmetryAnalysis,
 } from '../utils/ams2750';
 import {
   Layers,
@@ -150,38 +151,70 @@ export const QWZInfoPanel: React.FC<QWZInfoPanelProps> = ({
           </div>
         </div>
       ) : (
-        !meetsSensorCount &&
-        onFitSensorsToQWZ && (
-          <div className="bg-amber-950/60 border border-amber-700/80 rounded-xl p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-              <div className="text-amber-200">
-                <span className="font-bold">
-                  AMS 2750 Rev H {volumeCuFt >= 225 ? 'Table 18' : 'Table 17'} Alert:{' '}
-                </span>
-                Volume is <strong>{volumeM3.toFixed(3)} m³ ({volumeCuFt.toFixed(1)} ft³)</strong> which requires at least{' '}
-                <strong className="text-white underline">{minSensors} sensors</strong> (currently {channels.length}).
-              </div>
-            </div>
+        onFitSensorsToQWZ && (() => {
+          const sym = getSymmetryAnalysis(channels.length);
+          const minSym = getSymmetryAnalysis(minSensors);
+          if (!meetsSensorCount) {
+            return (
+              <div className="bg-amber-950/60 border border-amber-700/80 rounded-xl p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <div className="text-amber-200">
+                    <span className="font-bold">
+                      AMS 2750 Rev H {volumeCuFt >= 225 ? 'Table 18' : 'Table 17'} Alert:{' '}
+                    </span>
+                    Volume is <strong>{volumeM3.toFixed(3)} m³ ({volumeCuFt.toFixed(1)} ft³)</strong> requiring min{' '}
+                    <strong className="text-white underline">{minSensors} sensors</strong> (currently {channels.length}).
+                    {!minSym.isSymmetrical && (
+                      <span className="block text-[11px] text-amber-300/90 mt-0.5">
+                        Note: {minSensors} sensors creates an asymmetrical layout. Recommend adding {minSym.additionalNeeded} sensor{minSym.additionalNeeded > 1 ? 's' : ''} (total {minSym.recommendedCount}) for full 3D symmetry with 1 dead center.
+                      </span>
+                    )}
+                  </div>
+                </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => onFitSensorsToQWZ(minSensors)}
-                className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold font-mono text-xs cursor-pointer shadow-sm transition-colors"
-              >
-                Auto-Adjust to {minSensors} Sensors
-              </button>
-              {minSensors === 5 && (
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  <button
+                    onClick={() => onFitSensorsToQWZ(minSensors)}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold font-mono text-xs cursor-pointer shadow-sm transition-colors"
+                  >
+                    Auto-Adjust ({minSensors} Min)
+                  </button>
+                  {!minSym.isSymmetrical && (
+                    <button
+                      onClick={() => onFitSensorsToQWZ(minSym.recommendedCount)}
+                      className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-amber-600 hover:from-cyan-500 hover:to-amber-500 text-white font-bold font-mono text-xs cursor-pointer shadow-sm transition-colors flex items-center gap-1"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Set {minSym.recommendedCount} (Symmetrical)</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          } else if (!sym.isSymmetrical) {
+            return (
+              <div className="bg-slate-950/80 border border-amber-600/60 rounded-xl p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                  <div className="text-slate-300">
+                    <span className="font-bold text-amber-200">Asymmetrical Sensor Layout ({channels.length} Sensors): </span>
+                    <span>
+                      TC 1 is fixed dead center. Adding <strong className="text-white">{sym.additionalNeeded}</strong> sensor{sym.additionalNeeded > 1 ? 's' : ''} (total <strong className="text-white">{sym.recommendedCount}</strong>) is recommended for 100% 3D geometric symmetry.
+                    </span>
+                  </div>
+                </div>
                 <button
-                  onClick={() => onFitSensorsToQWZ(9)}
-                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-mono text-xs border border-slate-700 cursor-pointer transition-colors"
+                  onClick={() => onFitSensorsToQWZ(sym.recommendedCount)}
+                  className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-cyan-500 hover:from-amber-400 hover:to-cyan-400 text-slate-950 font-bold font-mono text-xs cursor-pointer shadow-sm transition-colors shrink-0 whitespace-nowrap"
                 >
-                  Set 9 (Table 17 Note 1)
+                  Upgrade to {sym.recommendedCount} Symmetrical Sensors
                 </button>
-              )}
-            </div>
-          </div>
-        )
+              </div>
+            );
+          }
+          return null;
+        })()
       )}
 
       {/* 2. Key Dimensions Cards Grid */}
