@@ -431,41 +431,76 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
             <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                 <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  {detectedDwells.every((d) => d.isSpreadCompliant) ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-amber-400" />
+                  )}
                   <span className="font-bold text-slate-200">
                     Detected Stabilized Dwell Periods ({detectedDwells.length} Setpoints Found)
                   </span>
                 </div>
-                <span className="text-emerald-400 font-mono text-[11px] font-bold">
-                  All Dwells Meet Nadcap Steady-State Criteria
-                </span>
+                {detectedDwells.every((d) => d.isSpreadCompliant) ? (
+                  <span className="text-emerald-400 font-mono text-[11px] font-bold">
+                    All Dwells Meet Class {furnaceClass} Steady-State Criteria
+                  </span>
+                ) : (
+                  <span className="text-amber-400 font-mono text-[11px] font-bold">
+                    Post-Stabilization 30-Min Capture Window (Includes Out-of-Tolerance Dwells)
+                  </span>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {detectedDwells.map((dwell, idx) => (
                   <div
                     key={idx}
-                    className="bg-slate-900/90 border border-slate-800 hover:border-cyan-500/60 rounded-xl p-3.5 space-y-2 transition-all"
+                    className={`bg-slate-900/90 border rounded-xl p-3.5 space-y-2 transition-all ${
+                      dwell.isSpreadCompliant
+                        ? 'border-slate-800 hover:border-cyan-500/60'
+                        : 'border-amber-800/70 hover:border-amber-500/70'
+                    }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-bold text-white font-mono flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            dwell.isSpreadCompliant ? 'bg-emerald-400' : 'bg-amber-400'
+                          }`}
+                        />
                         {dwell.targetTemp} {tempUnit}
                       </span>
-                      <span
-                        className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
-                          dwell.isDurationCompliant
-                            ? 'bg-emerald-950 border border-emerald-800 text-emerald-300'
-                            : 'bg-amber-950 border border-amber-800 text-amber-300'
-                        }`}
-                      >
-                        {dwell.durationMinutes} min soak
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span
+                          className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                            dwell.isSpreadCompliant
+                              ? 'bg-emerald-950 border border-emerald-800 text-emerald-300'
+                              : 'bg-red-950 border border-red-800 text-red-300'
+                          }`}
+                        >
+                          {dwell.isSpreadCompliant ? 'IN TOL' : 'OUT OF TOL'}
+                        </span>
+                        <span
+                          className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                            dwell.isDurationCompliant
+                              ? 'bg-emerald-950 border border-emerald-800 text-emerald-300'
+                              : 'bg-amber-950 border border-amber-800 text-amber-300'
+                          }`}
+                        >
+                          {dwell.durationMinutes} min
+                        </span>
+                      </div>
                     </div>
 
                     <div className="space-y-1 font-mono text-[11px] text-slate-300 bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Captured Window:</span>
+                        <span className="text-slate-400">Full Soak Hold:</span>
+                        <strong className="text-slate-200">
+                          {dwell.fullStartTimeStr} ➔ {dwell.fullEndTimeStr}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Capture Window (30m):</span>
                         <strong className="text-cyan-300">
                           {dwell.startTimeStr} ➔ {dwell.endTimeStr}
                         </strong>
@@ -475,8 +510,10 @@ export const CsvTusImportModal: React.FC<CsvTusImportModalProps> = ({
                         <strong className="text-amber-400">{dwell.maxOvershoot} {tempUnit}</strong>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Evaluation Window:</span>
-                        <strong className="text-emerald-400">{dwell.durationMinutes} min</strong>
+                        <span className="text-slate-400">Window Spread:</span>
+                        <strong className={dwell.isSpreadCompliant ? 'text-emerald-400' : 'text-red-400'}>
+                          {dwell.tempSpread} {tempUnit}
+                        </strong>
                       </div>
                       <div className="flex justify-between border-t border-slate-800 pt-1 text-[10px]">
                         <span className="text-slate-500">Channels Read:</span>

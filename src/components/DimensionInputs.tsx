@@ -629,25 +629,58 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
                   </span>
                 </div>
 
-                {/* Step-by-Step AMS 2750 Rev H Table 17 Mathematical Derivation */}
+                {/* Step-by-Step AMS 2750 Rev H Table 17 & Table 18 Mathematical Derivation */}
                 <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 text-[11px] space-y-1.5 font-mono text-slate-300">
                   <div className="text-cyan-400 font-bold flex items-center gap-1.5">
                     <Info className="w-3.5 h-3.5" />
-                    <span>AMS 2750 Rev H Table 17 Mathematical Derivation:</span>
-                  </div>
-                  <div>• Work Zone Volume = {qwz.length} × {qwz.width} × {qwz.height} {dimUnit} = <strong className="text-white">{volumeM3.toFixed(3)} m³</strong> ({volumeCuFt.toFixed(1)} ft³)</div>
-                  <div>• Baseline Requirement: First 6.4 m³ (225 ft³) = <strong className="text-white">9 sensors</strong> (8 corners + 1 center)</div>
-                  <div>
-                    • Excess Volume: {volumeM3.toFixed(3)} m³ − 6.4 m³ = <strong className="text-white">{(Math.max(0, volumeM3 - 6.4)).toFixed(3)} m³</strong>
+                    <span>
+                      AMS 2750 Rev H {volumeCuFt >= 225 ? 'Table 17 & Table 18' : 'Table 17'} Mathematical Derivation:
+                    </span>
                   </div>
                   <div>
-                    • Additional Sensors: ⌈{(Math.max(0, volumeM3 - 6.4)).toFixed(2)} m³ / 2.83 m³⌉ = <strong className="text-cyan-300">{additionalSensors} additional</strong> (1 per 2.83 m³ / 100 ft³ excess)
+                    • Work Zone Volume = {qwz.length} × {qwz.width} × {qwz.height} {dimUnit} ={' '}
+                    <strong className="text-white">{volumeM3.toFixed(3)} m³</strong> ({volumeCuFt.toFixed(2)} ft³)
                   </div>
+                  {volumeM3 <= 0 ? (
+                    <div className="text-amber-300">
+                      • Enter positive Work Zone Length, Width, and Height (&gt; 0) to calculate volume.
+                    </div>
+                  ) : volumeCuFt < 3 && volumeM3 < 0.085 ? (
+                    <>
+                      <div>
+                        • Table 17 Bracket (&lt; 0.085 m³ / &lt; 3 ft³):{' '}
+                        <strong className="text-white">5 sensors minimum</strong> (4 alternating corners + 1 center per Figure 1)
+                      </div>
+                      <div className="text-slate-400 font-sans text-[11px]">
+                        • <em>Table 17 Note 1:</em> The 9-sensor location pattern (8 corners + 1 center) for ≥ 3 to &lt; 225 ft³ may also be used for volumes &lt; 3 ft³.
+                      </div>
+                    </>
+                  ) : volumeCuFt < 225 && volumeM3 < 6.4 ? (
+                    <div>
+                      • Table 17 Bracket (≥ 0.085 to &lt; 6.4 m³ / ≥ 3 to &lt; 225 ft³):{' '}
+                      <strong className="text-white">9 sensors minimum</strong> (8 corners + 1 center per Figure 1)
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        • Baseline Requirement (up to 6.4 m³ / 225 ft³):{' '}
+                        <strong className="text-white">9 sensors</strong> (8 corners + 1 center)
+                      </div>
+                      <div>
+                        • Excess Volume above 6.4 m³ (225 ft³):{' '}
+                        <strong className="text-white">
+                          {Math.max(0, volumeM3 - 6.4).toFixed(3)} m³ ({Math.max(0, volumeCuFt - 225).toFixed(1)} ft³)
+                        </strong>
+                      </div>
+                      <div>
+                        • Table 18 Additional Distributed Sensors:{' '}
+                        <strong className="text-cyan-300">+{additionalSensors} sensors</strong>
+                      </div>
+                    </>
+                  )}
                   <div className="text-emerald-400 pt-1 font-bold border-t border-slate-800">
-                    Total Required Minimum = {baselineSensors} + {additionalSensors} = {minSensors} Sensors (AMS 2750 Rev H Table 17)
-                  </div>
-                  <div className="text-slate-400 font-sans text-[11px] pt-1">
-                    <em>Aerospace Engineering Note:</em> While <strong>{minSensors} sensors</strong> is 100% compliant with AMS 2750 Rev H Table 17, placing an odd number across a 6-sided box furnace creates asymmetry. Most Nadcap-accredited heat treaters use <strong>14 sensors</strong> (symmetrical 6 faces).
+                    Total Required Minimum = {baselineSensors} + {additionalSensors} = {minSensors} Sensors (AMS 2750 Rev H{' '}
+                    {volumeCuFt >= 225 ? 'Table 18' : 'Table 17'})
                   </div>
                 </div>
 
@@ -1044,7 +1077,7 @@ export const DimensionInputs: React.FC<DimensionInputsProps> = ({
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
           <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 space-y-1">
             <span className="text-slate-400 text-[11px] block">3D Opposite-Corner Diagonal Wire:</span>
             <div className="font-mono font-bold text-white text-sm">

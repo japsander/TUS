@@ -43,15 +43,16 @@ export function calculateVolumeInCuFt(qwz: QualifiedWorkZone, dimUnit: DimUnit):
 }
 
 /**
- * AMS 2750 Rev H Table 17: Minimum Number of TUS Sensors (Volumetric Method)
- * Defined in metric (m³) and imperial (ft³):
- * - Less than 225 ft³ (6.4 m³): 9 sensors (8 corners + 1 center)
- * - 225 to 3,000 ft³ (6.4 to 85 m³): 9 + 1 for each additional 100 ft³ (2.83 m³) or fraction thereof
- * - Greater than 3,000 ft³ (85 m³): 37 + 1 for each additional 250 ft³ (7.08 m³) or fraction thereof
+ * AMS 2750 Rev H Table 17 (p. 44) & Table 18 (p. 45):
+ * Minimum Number of TUS Sensors (Volumetric Method)
+ * - < 3 ft³ (< 0.085 m³): 5 sensors (4 alternating corners + 1 center per Figure 1; 9-sensor layout also permitted per Table 17 Note 1)
+ * - ≥ 3 and < 225 ft³ (≥ 0.085 and < 6.4 m³): 9 sensors (8 corners + 1 center)
+ * - ≥ 225 ft³ (≥ 6.4 m³): See Table 18 (depends on Furnace Class 1–2 vs 3–6, via Table 18 brackets or formula)
  */
 export function getMinRequiredSensors(
   volumeCuFt: number,
-  volumeM3?: number
+  volumeM3?: number,
+  furnaceClass: FurnaceClass = 2
 ): {
   minSensors: number;
   ruleText: string;
@@ -64,43 +65,88 @@ export function getMinRequiredSensors(
   const volM3 = volumeM3 !== undefined ? volumeM3 : volumeCuFt * 0.0283168;
   const volCuFt = volumeCuFt !== undefined ? volumeCuFt : volM3 * 35.3147;
 
-  if (volM3 < 6.4) {
+  if (volM3 <= 0 || volCuFt <= 0) {
+    return {
+      minSensors: 5,
+      ruleText: `AMS 2750 Rev H Table 17: Enter work zone dimensions (> 0) to calculate volume. Volumes < 0.085 m³ (< 3 ft³) require a minimum of 5 sensors (4 corners + 1 center per Figure 1).`,
+      formulaBreakdown: `Work zone volume is currently 0.000 m³ (0.0 ft³). Per AMS 2750 Rev H Table 17, volumes < 0.085 m³ (< 3 ft³) require 5 sensors minimum (or 9 sensors per Table 17 Note 1), and volumes ≥ 0.085 m³ to < 6.4 m³ (3 to < 225 ft³) require 9 sensors.`,
+      volumeM3Val: 0,
+      volumeCuFtVal: 0,
+      baselineSensors: 5,
+      additionalSensors: 0,
+    };
+  }
+
+  // Bracket 1: < 3 ft³ (< 0.085 m³) -> 5 sensors per Table 17
+  if (volM3 < 0.085 && volCuFt < 3) {
+    return {
+      minSensors: 5,
+      ruleText: `AMS 2750 Rev H Table 17: Work zone volume ${volM3.toFixed(3)} m³ (${volCuFt.toFixed(2)} ft³) is < 0.085 m³ (< 3 ft³) and requires a minimum of 5 sensors (4 corners + 1 center per Figure 1; 9 sensors optional per Note 1).`,
+      formulaBreakdown: `Volume ${volM3.toFixed(3)} m³ (${volCuFt.toFixed(2)} ft³) is below 0.085 m³ (3 ft³), requiring 5 sensors minimum (4 alternating corners + 1 center per Figure 1) under AMS 2750 Rev H Table 17 (Note 1 also permits using the 9-sensor layout).`,
+      volumeM3Val: volM3,
+      volumeCuFtVal: volCuFt,
+      baselineSensors: 5,
+      additionalSensors: 0,
+    };
+  }
+
+  // Bracket 2: ≥ 3 ft³ and < 225 ft³ (≥ 0.085 m³ and < 6.4 m³) -> 9 sensors per Table 17
+  if (volM3 < 6.4 && volCuFt < 225) {
     return {
       minSensors: 9,
-      ruleText: `AMS 2750 Rev H Table 17: Work zone volume ${volM3.toFixed(2)} m³ (< 6.4 m³ / 225 ft³) requires a minimum of 9 sensors (8 corners + 1 geometric center).`,
-      formulaBreakdown: `Volume ${volM3.toFixed(2)} m³ (${volCuFt.toFixed(1)} ft³) is below 6.4 m³ (225 ft³), requiring the baseline 9 sensors (8 corners + 1 geometric center) per AMS 2750 Rev H Table 17 & § 3.5.10.3.1.`,
+      ruleText: `AMS 2750 Rev H Table 17: Work zone volume ${volM3.toFixed(2)} m³ (${volCuFt.toFixed(1)} ft³) is between 0.085 and 6.4 m³ (3 to < 225 ft³), requiring a minimum of 9 sensors (8 corners + 1 center).`,
+      formulaBreakdown: `Volume ${volM3.toFixed(2)} m³ (${volCuFt.toFixed(1)} ft³) is within ≥ 0.085 to < 6.4 m³ (≥ 3 to < 225 ft³), requiring the baseline 9 sensors (8 corners + 1 geometric center) per AMS 2750 Rev H Table 17 & Figure 1.`,
       volumeM3Val: volM3,
       volumeCuFtVal: volCuFt,
       baselineSensors: 9,
       additionalSensors: 0,
     };
-  } else if (volM3 <= 85) {
-    const excessM3 = volM3 - 6.4;
-    const additional = Math.ceil(excessM3 / 2.83);
-    const minSensors = Math.min(37, 9 + additional);
-    return {
-      minSensors,
-      ruleText: `AMS 2750 Rev H Table 17: Volume ${volM3.toFixed(2)} m³ requires 9 + 1 per 2.83 m³ (100 ft³) excess = ${minSensors} sensors.`,
-      formulaBreakdown: `Baseline 9 sensors (for first 6.4 m³ / 225 ft³) + ${additional} additional sensors (1 per 2.83 m³ / 100 ft³ or fraction thereof of excess volume: ${excessM3.toFixed(2)} m³) = ${minSensors} Sensors Minimum per AMS 2750 Rev H Table 17.`,
-      volumeM3Val: volM3,
-      volumeCuFtVal: volCuFt,
-      baselineSensors: 9,
-      additionalSensors: additional,
-    };
-  } else {
-    const excessM3 = volM3 - 85;
-    const additional = Math.ceil(excessM3 / 7.08);
-    const minSensors = 37 + additional;
-    return {
-      minSensors,
-      ruleText: `AMS 2750 Rev H Table 17: Volume ${volM3.toFixed(2)} m³ requires 37 + 1 per 7.08 m³ (250 ft³) excess = ${minSensors} sensors.`,
-      formulaBreakdown: `Baseline 37 sensors (for up to 85 m³ / 3000 ft³) + ${additional} additional sensors (1 per 7.08 m³ / 250 ft³ or fraction thereof excess) = ${minSensors} Sensors Minimum per AMS 2750 Rev H Table 17.`,
-      volumeM3Val: volM3,
-      volumeCuFtVal: volCuFt,
-      baselineSensors: 37,
-      additionalSensors: additional,
-    };
   }
+
+  // Bracket 3: ≥ 225 ft³ (≥ 6.4 m³) -> Table 18 (depends on Furnace Class 1–2 vs 3–6)
+  const isClass1Or2 = furnaceClass === 1 || furnaceClass === 2;
+  const table18Brackets: Array<{ maxCuFt: number; maxM3: number; c12: number; c36: number }> = [
+    { maxCuFt: 300, maxM3: 8.5, c12: 14, c36: 12 },
+    { maxCuFt: 400, maxM3: 11, c12: 16, c36: 13 },
+    { maxCuFt: 600, maxM3: 17, c12: 19, c36: 14 },
+    { maxCuFt: 800, maxM3: 23, c12: 21, c36: 15 },
+    { maxCuFt: 1000, maxM3: 28, c12: 23, c36: 16 },
+    { maxCuFt: 2000, maxM3: 57, c12: 30, c36: 20 },
+    { maxCuFt: 3000, maxM3: 85, c12: 35, c36: 23 },
+    { maxCuFt: 4000, maxM3: 113, c12: 40, c36: 25 },
+  ];
+
+  for (const b of table18Brackets) {
+    if (volCuFt < b.maxCuFt || volM3 < b.maxM3) {
+      const minSensors = isClass1Or2 ? b.c12 : b.c36;
+      const additional = minSensors - 9;
+      return {
+        minSensors,
+        ruleText: `AMS 2750 Rev H Table 18 (Class ${furnaceClass}): Volume ${volM3.toFixed(2)} m³ (${volCuFt.toFixed(1)} ft³) < ${b.maxM3} m³ (${b.maxCuFt} ft³) requires ${minSensors} sensors (8 corners + 1 center + ${additional} distributed).`,
+        formulaBreakdown: `Per AMS 2750 Rev H Table 17 & Table 18 (Furnace Class ${furnaceClass}, volume < ${b.maxM3} m³ / ${b.maxCuFt} ft³): 9 baseline sensors + ${additional} uniformly distributed sensors = ${minSensors} Sensors Minimum.`,
+        volumeM3Val: volM3,
+        volumeCuFtVal: volCuFt,
+        baselineSensors: 9,
+        additionalSensors: additional,
+      };
+    }
+  }
+
+  // > 4000 ft³ (113 m³): Table 18 Note 1 Formula
+  const factor = isClass1Or2 ? 0.5 : 0.25;
+  const excessCuFt = Math.max(0, volCuFt - 225);
+  const additional = Math.ceil(factor * Math.sqrt(excessCuFt));
+  const minSensors = 9 + additional;
+
+  return {
+    minSensors,
+    ruleText: `AMS 2750 Rev H Table 18 Note 1 (Class ${furnaceClass}): Volume ${volM3.toFixed(2)} m³ (${volCuFt.toFixed(0)} ft³) requires 9 + ${isClass1Or2 ? '1/2' : '1/4'}×√(${volCuFt.toFixed(0)} - 225) = ${minSensors} sensors.`,
+    formulaBreakdown: `Baseline 9 sensors + ${additional} additional sensors via Table 18 Note 1 formula [9 + ${isClass1Or2 ? '1/2' : '1/4'} × √(Vol_ft³ - 225)] = ${minSensors} Sensors Minimum.`,
+    volumeM3Val: volM3,
+    volumeCuFtVal: volCuFt,
+    baselineSensors: 9,
+    additionalSensors: additional,
+  };
 }
 
 /**
@@ -245,6 +291,48 @@ export function generateStandardAMS2750Sensors(
         z: p.z,
         ux, uy, uz,
         correctionFactors: {}
+      };
+    });
+  }
+
+  // Handle 5-sensor layout for < 3 ft³ (< 0.085 m³) per AMS 2750 Rev H Table 17 & Figure 1
+  if (count === 5) {
+    const points5: Array<{ label: string; x: number; y: number; z: number }> = [
+      { label: 'Front Upper Left Corner (Loc 1)', x: xMin, y: yMax, z: zMin },
+      { label: 'Front Lower Right Corner (Loc 4)', x: xMin, y: yMin, z: zMax },
+      { label: 'Geometric Center (Loc 5)', x: xMid, y: yMid, z: zMid },
+      { label: 'Rear Lower Left Corner (Loc 7)', x: xMax, y: yMin, z: zMin },
+      { label: 'Rear Upper Right Corner (Loc 8)', x: xMax, y: yMax, z: zMax },
+    ];
+    const qL = Math.max(1, qwz.length);
+    const qH = Math.max(1, qwz.height);
+    const qW = Math.max(1, qwz.width);
+    const today = new Date().toISOString().split('T')[0];
+    const expiry = new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().split('T')[0];
+
+    return points5.map((p, idx) => {
+      const channelNumber = idx + 1;
+      const dist = computeSensorDistances(p.x, p.y, p.z, chamber);
+      const ux = Math.max(0, Math.min(1, (p.x - qwz.offsetFront) / qL));
+      const uy = Math.max(0, Math.min(1, (p.y - qwz.offsetFloor) / qH));
+      const uz = Math.max(0, Math.min(1, (p.z - qwz.offsetLeft) / qW));
+      return {
+        id: `tc-${channelNumber}`,
+        channelNumber,
+        label: p.label,
+        type: 'N',
+        rollLotNumber: '',
+        calibrationDate: today,
+        expirationDate: expiry,
+        recorderChannel: `CH-${String(channelNumber).padStart(2, '0')}`,
+        ...dist,
+        x: p.x,
+        y: p.y,
+        z: p.z,
+        ux,
+        uy,
+        uz,
+        correctionFactors: {},
       };
     });
   }
@@ -441,9 +529,6 @@ export function getLogicalWireRiggingSchedule(
     };
   }
 
-  const map = new Map<number, ThermocoupleChannel>();
-  channels.forEach((c) => map.set(c.channelNumber, c));
-
   const connections: Array<[ThermocoupleChannel, ThermocoupleChannel]> = [];
   const cables: WireRiggingCable[] = [];
   const oppositeCornerDiagonals: WireRiggingPlan['oppositeCornerDiagonals'] = [];
@@ -453,39 +538,34 @@ export function getLogicalWireRiggingSchedule(
   const seenConnections = new Set<string>();
 
   const addCable = (
-    numA: number,
-    numB: number,
+    a: ThermocoupleChannel | null | undefined,
+    b: ThermocoupleChannel | null | undefined,
     category: WireRiggingCable['category'],
     title: string,
     description: string
   ) => {
-    if (numA === numB || numA === 0 || numB === 0) return;
-    
-    // Normalize connection key so order doesn't matter (1-2 is same as 2-1)
-    const [min, max] = [Math.min(numA, numB), Math.max(numA, numB)];
-    const connectionKey = `${min}-${max}`;
-    
+    if (!a || !b || a.id === b.id) return;
+
+    const [idMin, idMax] = a.id < b.id ? [a.id, b.id] : [b.id, a.id];
+    const connectionKey = `${idMin}::${idMax}`;
+
     if (seenConnections.has(connectionKey)) return;
     seenConnections.add(connectionKey);
 
-    const a = map.get(numA);
-    const b = map.get(numB);
-    if (a && b) {
-      connections.push([a, b]);
-      cables.push({
-        id: `cable-${min}-${max}`,
-        stepNumber: stepCounter++,
-        category,
-        title,
-        fromChannelNum: a.channelNumber,
-        fromLabel: a.label,
-        toChannelNum: b.channelNumber,
-        toLabel: b.label,
-        cutLength: calcDistance3D(a, b),
-        description,
-        pair: [a, b],
-      });
-    }
+    connections.push([a, b]);
+    cables.push({
+      id: `cable-${a.id}-${b.id}`,
+      stepNumber: stepCounter++,
+      category,
+      title,
+      fromChannelNum: a.channelNumber,
+      fromLabel: a.label,
+      toChannelNum: b.channelNumber,
+      toLabel: b.label,
+      cutLength: calcDistance3D(a, b),
+      description,
+      pair: [a, b],
+    });
   };
 
   // 1. Identify 8 Corners & Center Hub based on QWZ geometry
@@ -527,19 +607,19 @@ export function getLogicalWireRiggingSchedule(
   };
 
   // Identify intended Hub sensor (closest to center)
-  const closestToCenter = 
-    channels.find(c => c.label.toLowerCase().includes('center') || c.label.toLowerCase().includes('hub')) ||
+  const closestToCenter =
+    channels.find((c) => c.label.toLowerCase().includes('center') || c.label.toLowerCase().includes('hub')) ||
     findClosest(xMid, yMid, zMid);
-  
+
   // Proximity check: is this sensor actually near the center?
-  const centerDist = Math.hypot(closestToCenter.x - xMid, closestToCenter.y - yMid, closestToCenter.z - zMid);
+  const centerDist = Math.hypot(
+    closestToCenter.x - xMid,
+    closestToCenter.y - yMid,
+    closestToCenter.z - zMid
+  );
   const minDim = Math.min(qwz.length, qwz.width, qwz.height);
   const hubSensor = centerDist < minDim * 0.2 ? closestToCenter : null;
   const centerNum = hubSensor?.channelNumber ?? 0;
-
-  const structuralIds = new Set<number>();
-  if (hubSensor) structuralIds.add(hubSensor.channelNumber);
-  Object.values(corners).forEach(c => structuralIds.add(c.channelNumber));
 
   // -----------------------------------------------------------
   // STEP 1: 4 MAIN 3D CROSS-BODY DIAGONALS (THROUGH CENTER HUB)
@@ -554,12 +634,11 @@ export function getLogicalWireRiggingSchedule(
   diagPairs.forEach(([c1, c2, title], idx) => {
     const a = corners[c1];
     const b = corners[c2];
-    
+
     if (hubSensor && a.id !== hubSensor.id && b.id !== hubSensor.id) {
-      // Split diagonal through the hub so they explicitly "meet" there
-      addCable(a.channelNumber, centerNum, '3d-diagonal', `${title} (Part A)`, 'Radial spider leg to Hub');
-      addCable(centerNum, b.channelNumber, '3d-diagonal', `${title} (Part B)`, 'Radial spider leg to Hub');
-      
+      addCable(a, hubSensor, '3d-diagonal', `${title} (Part A)`, 'Radial spider leg to Hub');
+      addCable(hubSensor, b, '3d-diagonal', `${title} (Part B)`, 'Radial spider leg to Hub');
+
       const span = calcDistance3D(a, b);
       oppositeCornerDiagonals.push({
         id: `diag-${idx + 1}`,
@@ -568,11 +647,10 @@ export function getLogicalWireRiggingSchedule(
         center: hubSensor,
         cornerB: b,
         totalSpanLength: span,
-        description: `Opposite-corner diagonal intersecting at Center Hub (TC ${centerNum}).`,
+        description: `Opposite-corner diagonal intersecting at Center Hub (${centerNum > 0 ? `TC ${centerNum}` : hubSensor.label}).`,
       });
     } else {
-      // Direct diagonal if no hub sensor exists or if corner is the hub
-      addCable(a.channelNumber, b.channelNumber, '3d-diagonal', title, 'Direct opposite-corner tension cable');
+      addCable(a, b, '3d-diagonal', title, 'Direct opposite-corner tension cable');
     }
   });
 
@@ -580,29 +658,28 @@ export function getLogicalWireRiggingSchedule(
   // STEP 2: 12-CABLE PERIMETER BOX FRAME (QWZ BOUNDARIES)
   // -----------------------------------------------------------
   const { fBL, fBR, fTL, fTR, rBL, rBR, rTL, rTR } = corners;
-  
+
   // Front Face
-  addCable(fTL.channelNumber, fTR.channelNumber, 'perimeter-frame', 'Front Top Rail', 'Structural frame');
-  addCable(fTR.channelNumber, fBR.channelNumber, 'perimeter-frame', 'Front Right Post', 'Structural frame');
-  addCable(fBR.channelNumber, fBL.channelNumber, 'perimeter-frame', 'Front Bottom Rail', 'Structural frame');
-  addCable(fBL.channelNumber, fTL.channelNumber, 'perimeter-frame', 'Front Left Post', 'Structural frame');
+  addCable(fTL, fTR, 'perimeter-frame', 'Front Top Rail', 'Structural frame');
+  addCable(fTR, fBR, 'perimeter-frame', 'Front Right Post', 'Structural frame');
+  addCable(fBR, fBL, 'perimeter-frame', 'Front Bottom Rail', 'Structural frame');
+  addCable(fBL, fTL, 'perimeter-frame', 'Front Left Post', 'Structural frame');
 
   // Rear Face
-  addCable(rTL.channelNumber, rTR.channelNumber, 'perimeter-frame', 'Rear Top Rail', 'Structural frame');
-  addCable(rTR.channelNumber, rBR.channelNumber, 'perimeter-frame', 'Rear Right Post', 'Structural frame');
-  addCable(rBR.channelNumber, rBL.channelNumber, 'perimeter-frame', 'Rear Bottom Rail', 'Structural frame');
-  addCable(rBL.channelNumber, rTL.channelNumber, 'perimeter-frame', 'Rear Left Post', 'Structural frame');
+  addCable(rTL, rTR, 'perimeter-frame', 'Rear Top Rail', 'Structural frame');
+  addCable(rTR, rBR, 'perimeter-frame', 'Rear Right Post', 'Structural frame');
+  addCable(rBR, rBL, 'perimeter-frame', 'Rear Bottom Rail', 'Structural frame');
+  addCable(rBL, rTL, 'perimeter-frame', 'Rear Left Post', 'Structural frame');
 
   // Depth Rails
-  addCable(fTL.channelNumber, rTL.channelNumber, 'depth-rail', 'Top Left Depth Rail', 'Structural frame');
-  addCable(fTR.channelNumber, rTR.channelNumber, 'depth-rail', 'Top Right Depth Rail', 'Structural frame');
-  addCable(fBR.channelNumber, rBR.channelNumber, 'depth-rail', 'Bottom Right Depth Rail', 'Structural frame');
-  addCable(fBL.channelNumber, rBL.channelNumber, 'depth-rail', 'Bottom Left Depth Rail', 'Structural frame');
+  addCable(fTL, rTL, 'depth-rail', 'Top Left Depth Rail', 'Structural frame');
+  addCable(fTR, rTR, 'depth-rail', 'Top Right Depth Rail', 'Structural frame');
+  addCable(fBR, rBR, 'depth-rail', 'Bottom Right Depth Rail', 'Structural frame');
+  addCable(fBL, rBL, 'depth-rail', 'Bottom Left Depth Rail', 'Structural frame');
 
   // -----------------------------------------------------------
   // STEP 3: FACE CROSS-HAIRS & MID-PLANE GRIDS
   // -----------------------------------------------------------
-  // Identify face midpoints and edge midpoints
   const mids = {
     fT: findClosest(xMin, yMax, zMid),
     fB: findClosest(xMin, yMin, zMid),
@@ -614,12 +691,12 @@ export function getLogicalWireRiggingSchedule(
     rR: findClosest(xMax, yMid, zMax),
     tL: findClosest(xMid, yMax, zMin),
     tR: findClosest(xMid, yMax, zMax),
-    tF: findClosest(xMin, yMax, zMid), // Same as fT
-    tBa: findClosest(xMax, yMax, zMid), // Same as rT
+    tF: findClosest(xMin, yMax, zMid),
+    tBa: findClosest(xMax, yMax, zMid),
     bL: findClosest(xMid, yMin, zMin),
     bR: findClosest(xMid, yMin, zMax),
-    bF: findClosest(xMin, yMin, zMid), // Same as fB
-    bBa: findClosest(xMax, yMin, zMid), // Same as rB
+    bF: findClosest(xMin, yMin, zMid),
+    bBa: findClosest(xMax, yMin, zMid),
   };
 
   const faceCenters = {
@@ -631,70 +708,78 @@ export function getLogicalWireRiggingSchedule(
     right: findClosest(xMid, yMid, zMax),
   };
 
-  // Add face crosses (Edge-to-Edge through Face Center if exists)
-  const addFaceCross = (numA: number, numB: number, numCenter: number, title: string) => {
-    if (numCenter && numCenter !== numA && numCenter !== numB) {
-      addCable(numA, numCenter, 'face-cross', `${title} (Part A)`, 'Face stability grid');
-      addCable(numCenter, numB, 'face-cross', `${title} (Part B)`, 'Face stability grid');
+  const addFaceCross = (
+    a: ThermocoupleChannel,
+    b: ThermocoupleChannel,
+    center: ThermocoupleChannel,
+    title: string
+  ) => {
+    if (center && center.id !== a.id && center.id !== b.id) {
+      addCable(a, center, 'face-cross', `${title} (Part A)`, 'Face stability grid');
+      addCable(center, b, 'face-cross', `${title} (Part B)`, 'Face stability grid');
     } else {
-      addCable(numA, numB, 'face-cross', title, 'Face stability grid');
+      addCable(a, b, 'face-cross', title, 'Face stability grid');
     }
   };
 
   // Front Face Cross
-  addFaceCross(mids.fT.channelNumber, mids.fB.channelNumber, faceCenters.front.channelNumber, 'Front Vertical Cross');
-  addFaceCross(mids.fL.channelNumber, mids.fR.channelNumber, faceCenters.front.channelNumber, 'Front Horizontal Cross');
-  
+  addFaceCross(mids.fT, mids.fB, faceCenters.front, 'Front Vertical Cross');
+  addFaceCross(mids.fL, mids.fR, faceCenters.front, 'Front Horizontal Cross');
+
   // Rear Face Cross
-  addFaceCross(mids.rT.channelNumber, mids.rB.channelNumber, faceCenters.rear.channelNumber, 'Rear Vertical Cross');
-  addFaceCross(mids.rL.channelNumber, mids.rR.channelNumber, faceCenters.rear.channelNumber, 'Rear Horizontal Cross');
+  addFaceCross(mids.rT, mids.rB, faceCenters.rear, 'Rear Vertical Cross');
+  addFaceCross(mids.rL, mids.rR, faceCenters.rear, 'Rear Horizontal Cross');
 
   // Top Face Cross
-  addFaceCross(mids.tL.channelNumber, mids.tR.channelNumber, faceCenters.top.channelNumber, 'Top Transverse Cross');
-  
+  addFaceCross(mids.tL, mids.tR, faceCenters.top, 'Top Transverse Cross');
+
   // Bottom Face Cross
-  addFaceCross(mids.bL.channelNumber, mids.bR.channelNumber, faceCenters.bottom.channelNumber, 'Bottom Transverse Cross');
+  addFaceCross(mids.bL, mids.bR, faceCenters.bottom, 'Bottom Transverse Cross');
 
   // Add Mid-Plane Crosses (Face Center to Opposite Face Center through Hub)
   if (hubSensor) {
-    const h = hubSensor.channelNumber;
     // Floor-to-Ceiling Plane
-    addCable(faceCenters.bottom.channelNumber, h, 'mid-plane', 'Y-Axis Plane (Bottom to Hub)', 'Internal volumetric grid');
-    addCable(h, faceCenters.top.channelNumber, 'mid-plane', 'Y-Axis Plane (Hub to Top)', 'Internal volumetric grid');
-    
+    addCable(faceCenters.bottom, hubSensor, 'mid-plane', 'Y-Axis Plane (Bottom to Hub)', 'Internal volumetric grid');
+    addCable(hubSensor, faceCenters.top, 'mid-plane', 'Y-Axis Plane (Hub to Top)', 'Internal volumetric grid');
+
     // Left-to-Right Plane
-    addCable(faceCenters.left.channelNumber, h, 'mid-plane', 'Z-Axis Plane (Left to Hub)', 'Internal volumetric grid');
-    addCable(h, faceCenters.right.channelNumber, 'mid-plane', 'Z-Axis Plane (Hub to Right)', 'Internal volumetric grid');
-    
+    addCable(faceCenters.left, hubSensor, 'mid-plane', 'Z-Axis Plane (Left to Hub)', 'Internal volumetric grid');
+    addCable(hubSensor, faceCenters.right, 'mid-plane', 'Z-Axis Plane (Hub to Right)', 'Internal volumetric grid');
+
     // Front-to-Rear Plane
-    addCable(faceCenters.front.channelNumber, h, 'mid-plane', 'X-Axis Plane (Front to Hub)', 'Internal volumetric grid');
-    addCable(h, faceCenters.rear.channelNumber, 'mid-plane', 'X-Axis Plane (Hub to Rear)', 'Internal volumetric grid');
+    addCable(faceCenters.front, hubSensor, 'mid-plane', 'X-Axis Plane (Front to Hub)', 'Internal volumetric grid');
+    addCable(hubSensor, faceCenters.rear, 'mid-plane', 'X-Axis Plane (Hub to Rear)', 'Internal volumetric grid');
 
     // Internal Longitudinal Stabilizers (Depth rails for face centers)
-    addCable(mids.fT.channelNumber, mids.rT.channelNumber, 'depth-rail', 'Top Center Depth Rail', 'Internal volumetric stabilizer');
-    addCable(mids.fB.channelNumber, mids.rB.channelNumber, 'depth-rail', 'Bottom Center Depth Rail', 'Internal volumetric stabilizer');
-    addCable(mids.fL.channelNumber, mids.rL.channelNumber, 'depth-rail', 'Left Center Depth Rail', 'Internal volumetric stabilizer');
-    addCable(mids.fR.channelNumber, mids.rR.channelNumber, 'depth-rail', 'Right Center Depth Rail', 'Internal volumetric stabilizer');
+    addCable(mids.fT, mids.rT, 'depth-rail', 'Top Center Depth Rail', 'Internal volumetric stabilizer');
+    addCable(mids.fB, mids.rB, 'depth-rail', 'Bottom Center Depth Rail', 'Internal volumetric stabilizer');
+    addCable(mids.fL, mids.rL, 'depth-rail', 'Left Center Depth Rail', 'Internal volumetric stabilizer');
+    addCable(mids.fR, mids.rR, 'depth-rail', 'Right Center Depth Rail', 'Internal volumetric stabilizer');
   } else {
-    addCable(faceCenters.bottom.channelNumber, faceCenters.top.channelNumber, 'mid-plane', 'Y-Axis Plane', 'Internal volumetric grid');
-    addCable(faceCenters.left.channelNumber, faceCenters.right.channelNumber, 'mid-plane', 'Z-Axis Plane', 'Internal volumetric grid');
-    addCable(faceCenters.front.channelNumber, faceCenters.rear.channelNumber, 'mid-plane', 'X-Axis Plane', 'Internal volumetric grid');
+    addCable(faceCenters.bottom, faceCenters.top, 'mid-plane', 'Y-Axis Plane', 'Internal volumetric grid');
+    addCable(faceCenters.left, faceCenters.right, 'mid-plane', 'Z-Axis Plane', 'Internal volumetric grid');
+    addCable(faceCenters.front, faceCenters.rear, 'mid-plane', 'X-Axis Plane', 'Internal volumetric grid');
   }
 
   // -----------------------------------------------------------
   // STEP 4: TETHER ALL OTHER SENSORS TO HUB
-  // Ensures any extra sensors are logically tied into the spider web
   // -----------------------------------------------------------
-  const coreIds = new Set<number>();
-  if (hubSensor) coreIds.add(hubSensor.channelNumber);
-  Object.values(corners).forEach(c => coreIds.add(c.channelNumber));
-  Object.values(mids).forEach(c => coreIds.add(c.channelNumber));
-  Object.values(faceCenters).forEach(c => coreIds.add(c.channelNumber));
+  const coreIds = new Set<string>();
+  if (hubSensor) coreIds.add(hubSensor.id);
+  Object.values(corners).forEach((c) => coreIds.add(c.id));
+  Object.values(mids).forEach((c) => coreIds.add(c.id));
+  Object.values(faceCenters).forEach((c) => coreIds.add(c.id));
 
   if (hubSensor) {
-    channels.forEach(ch => {
-      if (!coreIds.has(ch.channelNumber)) {
-        addCable(ch.channelNumber, centerNum, 'face-brace', `Radial Lead (TC ${ch.channelNumber} ➔ Hub)`, 'Logical center-tethered rigging');
+    channels.forEach((ch) => {
+      if (!coreIds.has(ch.id)) {
+        addCable(
+          ch,
+          hubSensor,
+          'face-brace',
+          `Radial Lead (${ch.channelNumber > 0 ? `TC ${ch.channelNumber}` : ch.label} ➔ Hub)`,
+          'Logical center-tethered rigging'
+        );
       }
     });
   }
@@ -707,8 +792,96 @@ export function getLogicalWireRiggingSchedule(
 }
 
 /**
+ * Extracts the physical location description from a sensor label by stripping any leading "TC X:" prefix.
+ */
+export function formatBaseSensorLocation(label: string): string {
+  return (label || '').replace(/^TC\s*(?:\d+|—|\?)\s*[-:]\s*/i, '').trim() || 'Sensor Location';
+}
+
+/**
+ * Formats a sensor label consistently with its assigned channel number.
+ */
+export function formatSensorLabelWithNumber(baseLocation: string, channelNumber: number): string {
+  const cleanBase = formatBaseSensorLocation(baseLocation);
+  return channelNumber > 0 ? `TC ${channelNumber}: ${cleanBase}` : cleanBase;
+}
+
+/**
+ * Assigns or clears a sensor's Field Instrument Channel Number and syncs
+ * channelNumber, recorderChannel (CH-XX), and label across both Schematic and Sensor Manager.
+ * When resolveDuplicates is true, any other sensor holding the same positive channelNumber is unassigned.
+ */
+export function assignSensorChannelNumber(
+  channels: ThermocoupleChannel[],
+  targetId: string,
+  newNum: number,
+  resolveDuplicates: boolean = true
+): ThermocoupleChannel[] {
+  const cleanNum = Math.max(0, Math.floor(newNum) || 0);
+
+  return channels.map((ch) => {
+    const baseLocation = formatBaseSensorLocation(ch.label);
+    if (ch.id === targetId) {
+      if (cleanNum <= 0) {
+        return {
+          ...ch,
+          channelNumber: 0,
+          recorderChannel: 'UNASSIGNED',
+          label: baseLocation,
+        };
+      }
+      return {
+        ...ch,
+        channelNumber: cleanNum,
+        recorderChannel: `CH-${String(cleanNum).padStart(2, '0')}`,
+        label: `TC ${cleanNum}: ${baseLocation}`,
+      };
+    }
+
+    if (resolveDuplicates && cleanNum > 0 && ch.channelNumber === cleanNum) {
+      return {
+        ...ch,
+        channelNumber: 0,
+        recorderChannel: 'UNASSIGNED',
+        label: baseLocation,
+      };
+    }
+
+    return ch;
+  });
+}
+
+/**
+ * Clears all channel numbers across all sensors (sets channelNumber = 0, recorderChannel = 'UNASSIGNED').
+ */
+export function clearAllSensorNumbers(channels: ThermocoupleChannel[]): ThermocoupleChannel[] {
+  return channels.map((ch) => ({
+    ...ch,
+    channelNumber: 0,
+    recorderChannel: 'UNASSIGNED',
+    label: formatBaseSensorLocation(ch.label),
+  }));
+}
+
+/**
+ * Restores sequential channel numbering (1..N) across all sensors.
+ */
+export function resetSequentialSensorNumbers(channels: ThermocoupleChannel[]): ThermocoupleChannel[] {
+  return channels.map((ch, idx) => {
+    const num = idx + 1;
+    const baseLocation = formatBaseSensorLocation(ch.label);
+    return {
+      ...ch,
+      channelNumber: num,
+      recorderChannel: `CH-${String(num).padStart(2, '0')}`,
+      label: `TC ${num}: ${baseLocation}`,
+    };
+  });
+}
+
+/**
  * Distributes sensors in a balanced, symmetrical pattern based on current count.
- * Snaps to corners, face centers, edge centers, and hub.
+ * Snaps to corners, face centers, edge centers, and hub while preserving assigned channel numbers.
  */
 export function balanceSensors(
   channels: ThermocoupleChannel[],
@@ -719,9 +892,10 @@ export function balanceSensors(
   // Use standard layouts if possible, otherwise distribute logically
   const balanced = generateStandardAMS2750Sensors(chamber, qwz, count);
   
-  // Maintain user-defined metadata (roll lots, etc) while updating positions
+  // Maintain user-defined metadata and channel numbering while updating positions
   return channels.map((ch, idx) => {
     const balancedPos = balanced[idx] || balanced[balanced.length - 1];
+    const baseLoc = formatBaseSensorLocation(balancedPos.label);
     return {
       ...ch,
       x: balancedPos.x,
@@ -731,7 +905,7 @@ export function balanceSensors(
       uy: balancedPos.uy,
       uz: balancedPos.uz,
       ...computeSensorDistances(balancedPos.x, balancedPos.y, balancedPos.z, chamber),
-      label: balancedPos.label, // Update label to match standard position
+      label: formatSensorLabelWithNumber(baseLoc, ch.channelNumber),
     };
   });
 }
@@ -779,98 +953,163 @@ export interface SetpointAnalysisResult {
 }
 
 /**
- * AMS 2750 Rev H Table 18: Maximum Allowed Offset (Magnitude of Temperature Controller Offset Adjustment)
- * Class 1: 5°F / 3°C
- * Class 2: 10°F / 6°C (Parts) or 5°F / 3°C (Raw Material)
- * Class 3: 10°F / 6°C (Parts) or 8°F / 4°C (Raw Material)
- * Class 4: 10°F / 6°C
- * Class 5: 13°F / 7°C
- * Class 6: 25°F / 14°C
+ * AMS 2750 Rev H Table 15 (p. 39) & Table 16 (p. 40):
+ * Maximum Permitted Offset (for TUS modification offsets and SAT correction offsets separately)
+ * Class 1: ±2.5°F / ±1.5°C
+ * Class 2: ±5.0°F / ±3.0°C
+ * Class 3: ±8.0°F / ±5.0°C or 0.38% of max qualified operating temp, whichever is greater
+ * Class 4: ±10.0°F / ±6.0°C or 0.38% of max qualified operating temp, whichever is greater
+ * Class 5: ±13.0°F / ±7.0°C or 0.38% of max qualified operating temp, whichever is greater
+ * Class 6: 0.75% of max qualified operating temp
  */
 export function getMaxAllowedOffset(
   furnaceClass: FurnaceClass,
   tempUnit: TempUnit,
-  furnaceApplication: 'Parts' | 'Raw Material' = 'Parts'
+  _furnaceApplication: 'Parts' | 'Raw Material' = 'Parts',
+  targetTemp?: number
 ): number {
-  const isRaw = furnaceApplication === 'Raw Material';
+  const pct038 = targetTemp ? Math.round(Math.abs(targetTemp) * 0.0038 * 10) / 10 : 0;
+  const pct075 = targetTemp ? Math.round(Math.abs(targetTemp) * 0.0075 * 10) / 10 : 0;
+
   if (tempUnit === '°F') {
     switch (furnaceClass) {
-      case 1: return 5;
-      case 2: return isRaw ? 5 : 10;
-      case 3: return isRaw ? 8 : 10;
-      case 4: return 10;
-      case 5: return 13;
-      case 6: return 25;
+      case 1: return 2.5;
+      case 2: return 5.0;
+      case 3: return Math.max(8.0, pct038);
+      case 4: return Math.max(10.0, pct038);
+      case 5: return Math.max(13.0, pct038);
+      case 6: return pct075 > 0 ? pct075 : 25.0;
     }
   } else {
     switch (furnaceClass) {
-      case 1: return 3;
-      case 2: return isRaw ? 3 : 6;
-      case 3: return isRaw ? 4 : 6;
-      case 4: return 6;
-      case 5: return 7;
-      case 6: return 14;
+      case 1: return 1.5;
+      case 2: return 3.0;
+      case 3: return Math.max(5.0, pct038);
+      case 4: return Math.max(6.0, pct038);
+      case 5: return Math.max(7.0, pct038);
+      case 6: return pct075 > 0 ? pct075 : 14.0;
     }
   }
 }
 
 /**
- * Evaluates whether two corner sensors are adjacent on the QWZ box (share 2 of 3 corner axes)
- * per AMS 2750 Rev H § 3.5.10.2 ("Failed sensors are not in adjacent corners").
+ * AMS 2750 Rev H § 3.5.13.1 & § 3.5.13.2 (p. 50):
+ * - "TUS sensor or recording channel failure at the corner locations of a rectangle/square work zone
+ *    or periphery (top/bottom or front/back) locations of a cylindrical work zone is not permitted."
+ * - "The failure of one or more TUS sensors at corner locations, any two adjacent TUS sensors, or a
+ *    number exceeding the requirements in Table 20 or Table 21 shall require corrective action to be
+ *    taken and the TUS repeated."
  */
-function findAdjacentFailedCorners(
+function findCornerFailures(
   failedChannels: ThermocoupleChannel[],
   qwz?: QualifiedWorkZone
-): Array<[ThermocoupleChannel, ThermocoupleChannel]> {
-  if (failedChannels.length < 2) return [];
-
-  // Identify corner coordinates either via QWZ or via normalized ux, uy, uz (0 or 1)
-  const cornerFailures = failedChannels.filter((ch) => {
-    if (qwz) {
+): ThermocoupleChannel[] {
+  return failedChannels.filter((ch) => {
+    if (ch.label.toLowerCase().includes('corner')) return true;
+    if (qwz && qwz.length > 0 && qwz.width > 0 && qwz.height > 0) {
       const tolL = Math.max(0.5, qwz.length * 0.05);
       const tolH = Math.max(0.5, qwz.height * 0.05);
       const tolW = Math.max(0.5, qwz.width * 0.05);
-      const isXCorner = Math.abs(ch.x - qwz.offsetFront) <= tolL || Math.abs(ch.x - (qwz.offsetFront + qwz.length)) <= tolL;
-      const isYCorner = Math.abs(ch.y - qwz.offsetFloor) <= tolH || Math.abs(ch.y - (qwz.offsetFloor + qwz.height)) <= tolH;
-      const isZCorner = Math.abs(ch.z - qwz.offsetLeft) <= tolW || Math.abs(ch.z - (qwz.offsetLeft + qwz.width)) <= tolW;
+      const isXCorner =
+        Math.abs(ch.x - qwz.offsetFront) <= tolL ||
+        Math.abs(ch.x - (qwz.offsetFront + qwz.length)) <= tolL;
+      const isYCorner =
+        Math.abs(ch.y - qwz.offsetFloor) <= tolH ||
+        Math.abs(ch.y - (qwz.offsetFloor + qwz.height)) <= tolH;
+      const isZCorner =
+        Math.abs(ch.z - qwz.offsetLeft) <= tolW ||
+        Math.abs(ch.z - (qwz.offsetLeft + qwz.width)) <= tolW;
       return isXCorner && isYCorner && isZCorner;
     }
     const ux = ch.ux ?? -1;
     const uy = ch.uy ?? -1;
     const uz = ch.uz ?? -1;
     const isCornerCoord = (v: number) => Math.abs(v - 0) <= 0.05 || Math.abs(v - 1) <= 0.05;
-    return (isCornerCoord(ux) && isCornerCoord(uy) && isCornerCoord(uz)) || ch.label.toLowerCase().includes('corner');
+    return isCornerCoord(ux) && isCornerCoord(uy) && isCornerCoord(uz);
   });
+}
 
+/**
+ * Checks if any two failed TUS sensors are adjacent to each other in the 3D rigging grid
+ * per AMS 2750 Rev H § 3.5.13.2 ("any two adjacent TUS sensors").
+ */
+function findAdjacentFailedSensors(
+  failedChannels: ThermocoupleChannel[],
+  allChannels: ThermocoupleChannel[],
+  qwz?: QualifiedWorkZone
+): Array<[ThermocoupleChannel, ThermocoupleChannel]> {
+  if (failedChannels.length < 2) return [];
   const adjacentPairs: Array<[ThermocoupleChannel, ThermocoupleChannel]> = [];
-  for (let i = 0; i < cornerFailures.length; i++) {
-    for (let j = i + 1; j < cornerFailures.length; j++) {
-      const a = cornerFailures[i];
-      const b = cornerFailures[j];
-      if (qwz) {
-        const sameX = Math.abs(a.x - b.x) <= Math.max(1, qwz.length * 0.1);
-        const sameY = Math.abs(a.y - b.y) <= Math.max(1, qwz.height * 0.1);
-        const sameZ = Math.abs(a.z - b.z) <= Math.max(1, qwz.width * 0.1);
-        const sharedAxes = (sameX ? 1 : 0) + (sameY ? 1 : 0) + (sameZ ? 1 : 0);
-        // Two corners are adjacent along a QWZ edge if they share 2 axes and differ on 1 axis
-        if (sharedAxes >= 2) {
-          adjacentPairs.push([a, b]);
-        }
-      } else {
-        const uxA = Math.round(a.ux ?? 0);
-        const uyA = Math.round(a.uy ?? 0);
-        const uzA = Math.round(a.uz ?? 0);
-        const uxB = Math.round(b.ux ?? 0);
-        const uyB = Math.round(b.uy ?? 0);
-        const uzB = Math.round(b.uz ?? 0);
-        const shared = (uxA === uxB ? 1 : 0) + (uyA === uyB ? 1 : 0) + (uzA === uzB ? 1 : 0);
-        if (shared >= 2) {
-          adjacentPairs.push([a, b]);
-        }
+
+  if (qwz && allChannels.length > 0) {
+    const connections = getWireGridConnections(allChannels, qwz);
+    const failedIds = new Set(failedChannels.map((c) => c.id));
+    for (const [a, b] of connections) {
+      if (failedIds.has(a.id) && failedIds.has(b.id)) {
+        adjacentPairs.push([a, b]);
+      }
+    }
+    if (adjacentPairs.length > 0) return adjacentPairs;
+  }
+
+  for (let i = 0; i < failedChannels.length; i++) {
+    for (let j = i + 1; j < failedChannels.length; j++) {
+      const a = failedChannels[i];
+      const b = failedChannels[j];
+      if (Math.abs(a.channelNumber - b.channelNumber) === 1) {
+        adjacentPairs.push([a, b]);
       }
     }
   }
   return adjacentPairs;
+}
+
+/**
+ * AMS 2750 Rev H Table 20 & Table 21 (p. 50):
+ * Allowable number of TUS sensor failures based on total TUS sensors and survey temperature
+ * - Table 20: TUS performed < 2000°F or < 1093°C
+ *   3 to 9: 0 ("None")
+ *   10 to 16: 1
+ *   17 to 23: 2
+ *   24 to 39: 3
+ *   ≥ 40: No more than 10% (Math.floor(total * 0.10))
+ * - Table 21: TUS performed ≥ 2000°F or ≥ 1093°C
+ *   3 to 5: 0 ("None")
+ *   6 to 9: 1
+ *   10 to 16: 2
+ *   17 to 23: 3
+ *   24 to 39: 4
+ *   ≥ 40: No more than 10% (Math.floor(total * 0.10))
+ */
+export function getAllowableSensorFailures(
+  totalSensors: number,
+  targetTemp: number,
+  tempUnit: TempUnit
+): { maxAllowedFailures: number; tableName: string } {
+  const isHighTemp =
+    (tempUnit === '°F' && targetTemp >= 2000) ||
+    (tempUnit === '°C' && targetTemp >= 1093);
+
+  if (!isHighTemp) {
+    if (totalSensors <= 9) return { maxAllowedFailures: 0, tableName: 'Table 20 (< 2000°F / < 1093°C)' };
+    if (totalSensors <= 16) return { maxAllowedFailures: 1, tableName: 'Table 20 (< 2000°F / < 1093°C)' };
+    if (totalSensors <= 23) return { maxAllowedFailures: 2, tableName: 'Table 20 (< 2000°F / < 1093°C)' };
+    if (totalSensors <= 39) return { maxAllowedFailures: 3, tableName: 'Table 20 (< 2000°F / < 1093°C)' };
+    return {
+      maxAllowedFailures: Math.floor(totalSensors * 0.1),
+      tableName: 'Table 20 (< 2000°F / < 1093°C)',
+    };
+  } else {
+    if (totalSensors <= 5) return { maxAllowedFailures: 0, tableName: 'Table 21 (≥ 2000°F / ≥ 1093°C)' };
+    if (totalSensors <= 9) return { maxAllowedFailures: 1, tableName: 'Table 21 (≥ 2000°F / ≥ 1093°C)' };
+    if (totalSensors <= 16) return { maxAllowedFailures: 2, tableName: 'Table 21 (≥ 2000°F / ≥ 1093°C)' };
+    if (totalSensors <= 23) return { maxAllowedFailures: 3, tableName: 'Table 21 (≥ 2000°F / ≥ 1093°C)' };
+    if (totalSensors <= 39) return { maxAllowedFailures: 4, tableName: 'Table 21 (≥ 2000°F / ≥ 1093°C)' };
+    return {
+      maxAllowedFailures: Math.floor(totalSensors * 0.1),
+      tableName: 'Table 21 (≥ 2000°F / ≥ 1093°C)',
+    };
+  }
 }
 
 export function evaluateSetpoint(
@@ -879,7 +1118,7 @@ export function evaluateSetpoint(
   furnaceClass: FurnaceClass,
   tempUnit: TempUnit,
   instrumentCorrection: number = 0.0,
-  minRequiredSensorsFromTable17: number = 9,
+  _minRequiredSensorsFromTable17: number = 9,
   qwz?: QualifiedWorkZone,
   furnaceApplication: 'Parts' | 'Raw Material' = 'Parts'
 ): SetpointAnalysisResult {
@@ -887,14 +1126,20 @@ export function evaluateSetpoint(
   const minAllowed = setpoint.targetTemp - tol;
   const maxAllowed = setpoint.targetTemp + tol;
 
-  const maxAllowedOffset = getMaxAllowedOffset(furnaceClass, tempUnit, furnaceApplication);
+  const maxAllowedOffset = getMaxAllowedOffset(
+    furnaceClass,
+    tempUnit,
+    furnaceApplication,
+    setpoint.targetTemp
+  );
   const offsetApplied = Math.abs(setpoint.controlOffset ?? 0);
   const isOffsetCompliant = offsetApplied <= maxAllowedOffset;
+  const tableRef = furnaceApplication === 'Raw Material' ? 'Table 16' : 'Table 15';
   const offsetCompliance = {
     offsetApplied: setpoint.controlOffset ?? 0,
     maxAllowedOffset,
     isOffsetCompliant,
-    ruleRef: `AMS 2750 Rev H Table 18 & § 3.2.5.2 (Max ±${maxAllowedOffset}${tempUnit} for Class ${furnaceClass} ${furnaceApplication})`,
+    ruleRef: `AMS 2750 Rev H ${tableRef} & § 3.2.6.1.4 (Max ±${maxAllowedOffset}${tempUnit} for Class ${furnaceClass})`,
   };
 
   if (!channels || channels.length === 0) {
@@ -920,30 +1165,21 @@ export function evaluateSetpoint(
 
   const failedChannels = channels.filter((ch) => ch.failed);
   const validChannels = channels.filter((ch) => !ch.failed);
-  const minRequired = Math.max(9, minRequiredSensorsFromTable17);
 
-  // AMS 2750 Rev H § 3.5.10.2 & § 3.5.14.1.6 Sensor Failure Evaluation:
-  // 1. No permanent furnace control or recording sensor can fail (§ 3.5.14.1.6)
+  // AMS 2750 Rev H § 3.5.13 & Tables 20 and 21 (p. 50) Sensor Failure Evaluation:
+  // 1. Failure of one or more TUS sensors at corner locations is NOT permitted (§ 3.5.13.1 & § 3.5.13.2)
+  const cornerFailures = findCornerFailures(failedChannels, qwz);
+  // 2. Failure of permanent control/recording sensor is NOT permitted (§ 3.5.13.1 & § 3.5.14.1.5)
   const failedControlSensors = failedChannels.filter((ch) => ch.isControlSensor);
-  // 2. When 9 TUS sensors are used, no more than 1 TUS sensor may fail.
-  //    When > 9 TUS sensors are used, no more than 10% (rounded down to integer, or exact 10%) of total TUS sensors used may fail (§ 3.5.10.2),
-  //    AND total remaining valid TUS sensors must be >= minimum required in Table 17.
-  const maxFailedAllowedByPercent = channels.length === 9 ? 1 : Math.floor(channels.length * 0.10);
-  const exceedsPercentFailureLimit = channels.length > 9
-    ? failedChannels.length > maxFailedAllowedByPercent
-    : failedChannels.length > 1;
-  // Wait: per § 3.5.10.2: "When 9 TUS sensors are used, no more than 1 TUS sensor may fail. When more than 9 TUS sensors are used, the number of failed TUS sensors shall not result in less than the minimum required in Table 17 or 10% of the number of TUS sensors used, whichever is greater."
-  // Note: If 9 sensors are used for a <225 ft³ zone (Table 17 min = 9), § 3.5.10.2 explicitly allows 1 sensor to fail (leaving 8 active) as long as it's not a control sensor!
-  // When > 9 sensors are used:
-  // - Remaining valid sensors must be >= minRequired (Table 17), AND
-  // - Number of failed sensors must not exceed 10% of total sensors used (e.g. for 36 sensors, 10% = 3.6 -> max 3 failed sensors, provided 36 - 3 = 33 >= Table 17 min).
-  const hasValidRemainingCount = channels.length === 9
-    ? failedChannels.length <= 1
-    : (validChannels.length >= minRequired && !exceedsPercentFailureLimit);
-
-  // 3. Failed sensors are not in adjacent corners (§ 3.5.10.2)
-  const adjacentFailedCornerPairs = findAdjacentFailedCorners(failedChannels, qwz);
-  const hasAdjacentCornerFailure = adjacentFailedCornerPairs.length > 0;
+  // 3. Failure of any two adjacent TUS sensors is NOT permitted (§ 3.5.13.2)
+  const adjacentFailedPairs = findAdjacentFailedSensors(failedChannels, channels, qwz);
+  // 4. Total number of failed TUS sensors shall not exceed Table 20 (< 2000°F / < 1093°C) or Table 21 (≥ 2000°F / ≥ 1093°C)
+  const { maxAllowedFailures, tableName } = getAllowableSensorFailures(
+    channels.length,
+    setpoint.targetTemp,
+    tempUnit
+  );
+  const exceedsFailureCount = failedChannels.length > maxAllowedFailures;
 
   let minCorrected = Infinity;
   let maxCorrected = -Infinity;
@@ -956,7 +1192,7 @@ export function evaluateSetpoint(
     const tcCorr = ch.correctionFactors[setpoint.id] ?? 0;
     const corrected = Math.round((raw + tcCorr + instrumentCorrection) * 10) / 10;
     const delta = Math.round((corrected - setpoint.targetTemp) * 10) / 10;
-    const inTolerance = ch.failed ? true : (corrected >= minAllowed && corrected <= maxAllowed);
+    const inTolerance = ch.failed ? true : corrected >= minAllowed && corrected <= maxAllowed;
 
     if (!ch.failed) {
       if (corrected < minCorrected) {
@@ -984,62 +1220,60 @@ export function evaluateSetpoint(
   });
 
   const evaluationChannels = validChannels.length > 0 ? validChannels : channels;
-  const meanCorrected = evaluationChannels.length > 0 ? Math.round((sumCorrected / evaluationChannels.length) * 10) / 10 : setpoint.targetTemp;
+  const meanCorrected =
+    evaluationChannels.length > 0
+      ? Math.round((sumCorrected / evaluationChannels.length) * 10) / 10
+      : setpoint.targetTemp;
   const spread = Math.round((maxCorrected - minCorrected) * 10) / 10;
-  // AMS 2750 Rev H § 3.5.10.6 & § 3.5.14.1.2: At no time shall any sensor reading exceed the upper TUS tolerance!
+  // AMS 2750 Rev H § 3.5.10.6 & § 3.5.14.1.6: At no time shall any sensor reading exceed the upper TUS tolerance!
   const overshootPassed = setpoint.maxOvershootObserved <= setpoint.targetTemp + tol;
-  
-  const allValidPassed = validChannels.length > 0 
-    ? channelResults.filter(c => !c.failed).every(c => c.inTolerance)
-    : channelResults.every(c => c.inTolerance);
+
+  const allValidPassed =
+    validChannels.length > 0
+      ? channelResults.filter((c) => !c.failed).every((c) => c.inTolerance)
+      : channelResults.every((c) => c.inTolerance);
 
   let passed = allValidPassed && overshootPassed && isOffsetCompliant;
   let sensorFailureNote: string | undefined;
 
   if (failedChannels.length > 0) {
     const failureViolations: string[] = [];
+    if (cornerFailures.length > 0) {
+      failureViolations.push(
+        `Corner TUS sensor failure is not permitted (${cornerFailures.map((c) => `TC ${c.channelNumber} - ${c.label}`).join(', ')}) — prohibited by § 3.5.13.1 & § 3.5.13.2`
+      );
+    }
     if (failedControlSensors.length > 0) {
       failureViolations.push(
-        `Permanent furnace control/recording sensor(s) failed (${failedControlSensors.map(c => `TC ${c.channelNumber}`).join(', ')}) — prohibited by § 3.5.14.1.6`
+        `Control/recording channel failure (${failedControlSensors.map((c) => `TC ${c.channelNumber}`).join(', ')}) — prohibited by § 3.5.13.1`
       );
     }
-    if (hasAdjacentCornerFailure) {
-      const pairStr = adjacentFailedCornerPairs.map(([a, b]) => `TC ${a.channelNumber} & TC ${b.channelNumber}`).join('; ');
+    if (adjacentFailedPairs.length > 0) {
+      const pairStr = adjacentFailedPairs
+        .map(([a, b]) => `TC ${a.channelNumber} & TC ${b.channelNumber}`)
+        .join('; ');
       failureViolations.push(
-        `Failed sensors are in adjacent corners (${pairStr}) — prohibited by § 3.5.10.2`
+        `Two adjacent TUS sensors failed (${pairStr}) — prohibited by § 3.5.13.2`
       );
     }
-    if (!hasValidRemainingCount) {
-      if (channels.length === 9 && failedChannels.length > 1) {
-        failureViolations.push(
-          `${failedChannels.length} sensors failed in a 9-sensor survey (maximum 1 failed sensor allowed per § 3.5.10.2)`
-        );
-      } else {
-        if (exceedsPercentFailureLimit) {
-          failureViolations.push(
-            `${failedChannels.length} sensors failed, exceeding the maximum 10% failure allowance (${maxFailedAllowedByPercent} max for ${channels.length} sensors per § 3.5.10.2)`
-          );
-        }
-        if (validChannels.length < minRequired) {
-          failureViolations.push(
-            `Remaining active valid sensors (${validChannels.length}) dropped below the AMS 2750 Rev H Table 17 minimum requirement (${minRequired} sensors for this work zone volume)`
-          );
-        }
-      }
+    if (exceedsFailureCount) {
+      failureViolations.push(
+        `${failedChannels.length} TUS sensor(s) failed, exceeding the maximum ${maxAllowedFailures} allowable failure(s) for ${channels.length} total TUS sensors per AMS 2750 Rev H ${tableName} & § 3.5.13.2`
+      );
     }
 
     if (failureViolations.length === 0 && allValidPassed && overshootPassed && isOffsetCompliant) {
       passed = true;
-      sensorFailureNote = `AMS 2750 Rev H § 3.5.10.2 & § 3.5.14.1.6 Sensor Failure Provision: ${failedChannels.length} TUS sensor(s) experienced open/broken failure (${failedChannels.map(c => `TC ${c.channelNumber} - ${c.label}`).join(', ')}). Active valid sensors (${validChannels.length}/${channels.length}) satisfy Table 17 minimum (${minRequired}) and ≤10% failure limit (${maxFailedAllowedByPercent} max), no adjacent corners failed, and no control sensor failed. Survey is certified as PASS.`;
+      sensorFailureNote = `AMS 2750 Rev H § 3.5.13 & ${tableName} Sensor Failure Provision: ${failedChannels.length} non-corner TUS sensor(s) failed (${failedChannels.map((c) => `TC ${c.channelNumber} - ${c.label}`).join(', ')}), which is within the maximum ${maxAllowedFailures} allowable failure(s) for ${channels.length} total TUS sensors, with no corner or adjacent sensor failures. Survey is certified as PASS.`;
     } else if (failureViolations.length > 0) {
       passed = false;
-      sensorFailureNote = `AMS 2750 Rev H § 3.5.10.2 / § 3.5.14.1.6 Sensor Failure Violation: ${failureViolations.join(' | ')}. Survey FAILED.`;
+      sensorFailureNote = `AMS 2750 Rev H § 3.5.13 / ${tableName} Sensor Failure Violation: ${failureViolations.join(' | ')}. Corrective action required and TUS must be repeated.`;
     } else {
       passed = false;
       sensorFailureNote = `AMS 2750 Rev H Evaluation Note: ${failedChannels.length} sensor(s) marked failed, and one or more active sensors or parameters (overshoot/offset) exceeded tolerance. Survey FAILED.`;
     }
   } else if (!isOffsetCompliant) {
-    sensorFailureNote = `AMS 2750 Rev H Table 18 Offset Violation: Applied control offset (${setpoint.controlOffset}${tempUnit}) exceeds maximum allowed ±${maxAllowedOffset}${tempUnit} for Class ${furnaceClass} (${furnaceApplication}). Survey FAILED.`;
+    sensorFailureNote = `AMS 2750 Rev H ${tableRef} & § 3.2.6.1.4 Offset Violation: Applied modification offset (${setpoint.controlOffset}${tempUnit}) exceeds maximum permitted ±${maxAllowedOffset}${tempUnit} for Class ${furnaceClass}. Survey FAILED.`;
   }
 
   return {

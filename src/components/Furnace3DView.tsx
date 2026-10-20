@@ -566,7 +566,10 @@ export const Furnace3DView: React.FC<Furnace3DViewProps> = ({
 
       // 3D Tag Label
       const tagBg = isSelected ? '#dc2626' : ch.isControlSensor ? '#2563eb' : '#0284c7';
-      const labelSprite = createTextSprite(`TC ${ch.channelNumber}`, tagBg);
+      const labelSprite = createTextSprite(
+        ch.channelNumber > 0 ? `TC ${ch.channelNumber}` : 'TC —',
+        tagBg
+      );
       labelSprite.position.set(0, 6.5, 0);
       chSubGroup.add(labelSprite);
 
@@ -738,8 +741,7 @@ export const Furnace3DView: React.FC<Furnace3DViewProps> = ({
         // Skip diagonals as they are handled above with spline curves
         if (c.category === '3d-diagonal') return;
 
-        const fromCh = channels.find((ch) => ch.channelNumber === c.fromChannelNum);
-        const toCh = channels.find((ch) => ch.channelNumber === c.toChannelNum);
+        const [fromCh, toCh] = c.pair;
         if (fromCh && toCh) {
           const p1 = toLocal(fromCh.x, fromCh.y, fromCh.z);
           const p2 = toLocal(toCh.x, toCh.y, toCh.z);

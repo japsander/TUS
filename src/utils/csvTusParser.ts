@@ -290,6 +290,125 @@ export function parseTusCsv(
 }
 
 /**
+ * Computes the mean, min, and max across all active mapped channels for a single CSV row.
+ */
+function getRowChannelStats(
+  row: ParsedCsvRow,
+  activeMappings: CsvColumnMapping[]
+): { mean: number; min: number; max: number } {
+  let sum = 0;
+  let count = 0;
+  let min = Infinity;
+  let max = -Infinity;
+  for (const map of activeMappings) {
+    const val = row.values[map.csvHeader];
+    if (val !== undefined) {
+      sum += val;
+      count++;
+      if (val < min) min = val;
+      if (val > max) max = val;
+    }
+  }
+  return {
+    mean: count > 0 ? sum / count : 0,
+    min: min === Infinity ? 0 : min,
+    max: max === -Infinity ? 0 : max,
+  };
+}
+
+/**
+ * Determines the true end of a steady-state soak period (soakEndIndex) by checking
+ * whether the in-band period terminated due to a sustained ramp-up to a higher setpoint
+ * (or cooldown at the end of the survey) and backtracking along that continuous departure
+ * ramp to the exact point where the steady-state soak ended and the ramp began.
+ *
+ * This prevents the initial ramp-up to the next setpoint (while still below target + tolerance)
+ * from being mistaken for overshoot of the current setpoint, without ignoring any genuine
+ * overshoot that occurred during the actual soak period (even after the 30-min capture window).
+ */
+function findTrueSoakEndIndex(
+  rows: ParsedCsvRow[],
+  bestStart: number,
+  rawBestEnd: number,
+  target: number,
+  tolerance: number,
+  activeMappings: CsvColumnMapping[],
+  minDurationMinutes: number
+): number {
+  const nextIdx = rawBestEnd + 1;
+  if (nextIdx >= rows.length) return rawBestEnd;
+
+  const upperTol = target + tolerance;
+  const lowerTol = target - tolerance;
+
+  const endStats = getRowChannelStats(rows[rawBestEnd], activeMappings);
+  const nextStats = getRowChannelStats(rows[nextIdx], activeMappings);
+  const lookAheadIdx = Math.min(rows.length - 1, rawBestEnd + 5);
+  const lookAheadStats = getRowChannelStats(rows[lookAheadIdx], activeMappings);
+
+  // Confirm whether the furnace exited the tolerance band on a sustained departure ramp-up
+  const exitedHigh = nextStats.max > upperTol;
+  const isSustainedRampUp =
+    exitedHigh && lookAheadStats.mean > endStats.mean + 0.5 && lookAheadStats.max > upperTol;
+
+  // Also check if the furnace exited the tolerance band on a sustained cooldown ramp
+  const exitedLow = nextStats.min < lowerTol;
+  const isSustainedCoolDown =
+    exitedLow && lookAheadStats.mean < endStats.mean - 0.5 && lookAheadStats.min < lowerTol;
+
+  if (!isSustainedRampUp && !isSustainedCoolDown) {
+    return rawBestEnd;
+  }
+
+  // Never backtrack so far that the remaining soak duration falls below minDurationMinutes
+  const minAllowedSec = rows[bestStart].timestampSec + minDurationMinutes * 60;
+  let k = rawBestEnd;
+
+  if (isSustainedRampUp) {
+    while (k > bestStart && rows[k - 1].timestampSec >= minAllowedSec) {
+      const curr = getRowChannelStats(rows[k], activeMappings);
+      const prev1 = getRowChannelStats(rows[k - 1], activeMappings);
+      const prev3 = getRowChannelStats(rows[Math.max(bestStart, k - 3)], activeMappings);
+
+      const dMean1 = curr.mean - prev1.mean;
+      const dMax1 = curr.max - prev1.max;
+      const dMean3 = curr.mean - prev3.mean;
+
+      // Continue stepping backward while on the monotonic upward departure slope
+      const isClimbingStep = dMean1 >= 0.15 || (dMean1 >= 0.08 && dMax1 >= 0.2);
+      const isClimbingWindow = dMean3 >= 0.4 && dMean1 >= -0.15;
+
+      if (isClimbingStep || isClimbingWindow) {
+        k--;
+      } else {
+        break;
+      }
+    }
+  } else if (isSustainedCoolDown) {
+    while (k > bestStart && rows[k - 1].timestampSec >= minAllowedSec) {
+      const curr = getRowChannelStats(rows[k], activeMappings);
+      const prev1 = getRowChannelStats(rows[k - 1], activeMappings);
+      const prev3 = getRowChannelStats(rows[Math.max(bestStart, k - 3)], activeMappings);
+
+      const dMean1 = curr.mean - prev1.mean;
+      const dMin1 = curr.min - prev1.min;
+      const dMean3 = curr.mean - prev3.mean;
+
+      const isCoolingStep = dMean1 <= -0.15 || (dMean1 <= -0.08 && dMin1 <= -0.2);
+      const isCoolingWindow = dMean3 <= -0.4 && dMean1 <= 0.15;
+
+      if (isCoolingStep || isCoolingWindow) {
+        k--;
+      } else {
+        break;
+      }
+    }
+  }
+
+  return k;
+}
+
+/**
  * Searches through the CSV rows to detect periods of stable dwell for given setpoints
  * meeting AMS 2750 Rev H / Nadcap AC7102/8 requirements.
  */
@@ -312,77 +431,117 @@ export function detectTusDwells(
   let lastProcessedIndex = 0;
   let prevEndIndex = 0;
 
+  // Physical plateau search bands: detect the physical soak plateau around the target temperature first,
+  // then place the 30-minute capture window directly after the stabilization period when the lowest reading TC
+  // reaches the allowable range (target - tolerance) for the class of the furnace.
+  const basePlateauTol = Math.max(tolerance, tempUnit === '°C' ? 12 : 22);
+  const fallbackBands = tempUnit === '°C' ? [14, 20, 28] : [25, 35, 50];
+  const candidateTolerances = [
+    basePlateauTol,
+    ...fallbackBands.filter((b) => b > basePlateauTol),
+  ];
+
   for (const target of targetTemps) {
-    const lowerTol = target - tolerance;
-    const upperTol = target + tolerance;
-
     let foundDwell: DetectedDwell | null = null;
-    let currentStart = -1;
 
-    // Search sequentially from where we left off
-    for (let i = lastProcessedIndex; i < rows.length; i++) {
-      const row = rows[i];
-      let allInBand = true;
-      for (const map of activeMappings) {
-        const val = row.values[map.csvHeader];
-        if (val === undefined || val < lowerTol || val > upperTol) {
-          allInBand = false;
-          break;
+    for (const searchTol of candidateTolerances) {
+      const lowerSearch = target - searchTol;
+      const upperSearch = target + searchTol;
+      let currentStart = -1;
+
+      for (let i = lastProcessedIndex; i < rows.length; i++) {
+        const row = rows[i];
+        let allInBand = true;
+        for (const map of activeMappings) {
+          const val = row.values[map.csvHeader];
+          if (val === undefined || val < lowerSearch || val > upperSearch) {
+            allInBand = false;
+            break;
+          }
+        }
+
+        if (allInBand) {
+          if (currentStart === -1) currentStart = i;
+
+          // Check if current contiguous block meets minimum soak duration
+          const startRow = rows[currentStart];
+          const durationSec = row.timestampSec - startRow.timestampSec;
+          const durationMin = durationSec / 60;
+
+          if (durationMin >= minDurationMinutes) {
+            // Follow the physical hold envelope until the furnace departs for the next setpoint or cools down
+            const holdEnvelopeTol = searchTol;
+            const lowerHold = target - holdEnvelopeTol;
+            const upperHold = target + holdEnvelopeTol;
+
+            let j = i + 1;
+            while (j < rows.length) {
+              let nextInHold = true;
+              for (const map of activeMappings) {
+                const val = rows[j].values[map.csvHeader];
+                if (val === undefined || val < lowerHold || val > upperHold) {
+                  nextInHold = false;
+                  break;
+                }
+              }
+              if (!nextInHold) break;
+              j++;
+            }
+
+            const bestStart = currentStart;
+            const rawBestEnd = j - 1;
+
+            // Backtrack any departure ramp-up (or cooldown) at the end of the hold
+            // so the next setpoint's ramp-up is not mistaken for overshoot of this setpoint
+            const soakEnd = findTrueSoakEndIndex(
+              rows,
+              bestStart,
+              rawBestEnd,
+              target,
+              holdEnvelopeTol,
+              activeMappings,
+              minDurationMinutes
+            );
+
+            // Calculate statistics for this dwell against the strict furnace class tolerance
+            const stats = calculateDwellStats(
+              rows,
+              bestStart,
+              soakEnd,
+              target,
+              activeMappings,
+              tolerance,
+              tempUnit,
+              minDurationMinutes,
+              prevEndIndex
+            );
+            foundDwell = stats;
+
+            // Stop looking for overshoot at this setpoint's soakEnd; next setpoint search continues after rawBestEnd
+            prevEndIndex = soakEnd + 1;
+            lastProcessedIndex = rawBestEnd + 1;
+            results.push(foundDwell);
+            break;
+          }
+        } else {
+          currentStart = -1;
         }
       }
 
-      if (allInBand) {
-        if (currentStart === -1) currentStart = i;
-        
-        // Check if current contiguous block meets duration
-        const startRow = rows[currentStart];
-        const durationSec = row.timestampSec - startRow.timestampSec;
-        const durationMin = durationSec / 60;
-
-        if (durationMin >= minDurationMinutes) {
-          // We found a valid dwell! 
-          // However, we want to find the full extent of this stability block
-          // Let's keep going until it breaks or we hit the end
-          let j = i + 1;
-          while (j < rows.length) {
-            let nextInBand = true;
-            for (const map of activeMappings) {
-              const val = rows[j].values[map.csvHeader];
-              if (val === undefined || val < lowerTol || val > upperTol) {
-                nextInBand = false;
-                break;
-              }
-            }
-            if (!nextInBand) break;
-            j++;
-          }
-          
-          const bestStart = currentStart;
-          const bestEnd = j - 1;
-          const finalDurationMin = Math.round((rows[bestEnd].timestampSec - rows[bestStart].timestampSec) / 60);
-
-          // Calculate statistics for this dwell (including ramp-up from prevEndIndex to bestEnd)
-          const stats = calculateDwellStats(rows, bestStart, bestEnd, target, activeMappings, tolerance, tempUnit, minDurationMinutes, prevEndIndex);
-          foundDwell = stats;
-          
-          prevEndIndex = bestEnd;
-          lastProcessedIndex = bestEnd + 1;
-          results.push(foundDwell);
-          break; // Move to next setpoint
-        }
-      } else {
-        currentStart = -1;
+      if (foundDwell) {
+        break; // Move to next setpoint
       }
     }
-
-    // If no strict dwell found, we stay at lastProcessedIndex and try next setpoint
   }
 
   return results;
 }
 
 /**
- * Helper to calculate stats for a confirmed dwell period
+ * Helper to calculate stats for a confirmed dwell period.
+ * Places the 30-minute capture window directly after the stabilization period
+ * when the lowest reading TC reaches the allowable range (target - tolerance)
+ * for the class of the furnace (zero "best-fit" cherry-picking).
  */
 function calculateDwellStats(
   rows: ParsedCsvRow[],
@@ -395,46 +554,66 @@ function calculateDwellStats(
   minDurationMinutes: number,
   prevEndIndex: number = 0
 ): DetectedDwell {
-  const startRow = rows[bestStart];
-  const endRow = rows[bestEnd];
-  const totalDurationMin = (endRow.timestampSec - startRow.timestampSec) / 60;
+  const targetWindowSec = minDurationMinutes * 60;
+  const lowerTol = target - tolerance;
 
-  // 1. Find the Most Stable 30-Minute Consecutive Window
-  let evalStart = bestStart;
-  let evalEnd = bestEnd;
-  let minWindowSpread = Infinity;
+  let evalStart = -1;
 
-  const targetWindowSec = 30 * 60;
+  // 1. Primary post-stabilization rule: find the earliest timestamp where the lowest reading TC
+  // has reached the allowable range (minTC >= target - tolerance) and remains >= target - tolerance
+  // throughout the 30-minute capture window (so stabilization is genuinely complete).
+  for (let i = bestStart; i <= bestEnd; i++) {
+    if (rows[bestEnd].timestampSec - rows[i].timestampSec < targetWindowSec) break;
+    const startStats = getRowChannelStats(rows[i], activeMappings);
+    if (startStats.min < lowerTol) continue;
 
-  if (totalDurationMin * 60 >= targetWindowSec) {
+    let sustainedInLowerBand = true;
+    let k = i;
+    while (k <= bestEnd && rows[k].timestampSec - rows[i].timestampSec < targetWindowSec) {
+      if (getRowChannelStats(rows[k], activeMappings).min < lowerTol) {
+        sustainedInLowerBand = false;
+        break;
+      }
+      k++;
+    }
+    if (sustainedInLowerBand && k <= bestEnd && getRowChannelStats(rows[k], activeMappings).min < lowerTol) {
+      sustainedInLowerBand = false;
+    }
+
+    if (sustainedInLowerBand) {
+      evalStart = i;
+      break;
+    }
+  }
+
+  // 2. If the lowest reading TC reaches target - tolerance during the soak but does not sustain it
+  // continuously for 30 minutes (e.g., tight class tolerance), start at the first threshold crossing.
+  if (evalStart === -1) {
     for (let i = bestStart; i <= bestEnd; i++) {
-      let j = i;
-      while (j <= bestEnd && rows[j].timestampSec - rows[i].timestampSec < targetWindowSec) {
-        j++;
-      }
-      
-      if (j > bestEnd) break;
-
-      let maxS = -Infinity;
-      let minS = Infinity;
-      for (let k = i; k <= j; k++) {
-        for (const map of activeMappings) {
-          const val = rows[k].values[map.csvHeader];
-          if (val !== undefined) {
-            if (val > maxS) maxS = val;
-            if (val < minS) minS = val;
-          }
-        }
-      }
-      
-      const currentSpread = maxS - minS;
-      if (currentSpread < minWindowSpread) {
-        minWindowSpread = currentSpread;
+      if (rows[bestEnd].timestampSec - rows[i].timestampSec < targetWindowSec) break;
+      const stats = getRowChannelStats(rows[i], activeMappings);
+      if (stats.min >= lowerTol) {
         evalStart = i;
-        evalEnd = j;
+        break;
       }
     }
   }
+
+  // 3. Fallback if the lowest reading TC never reaches target - tolerance at any point during the soak
+  // (e.g., an under-temperature failed survey): start directly at the beginning of the stabilized plateau (bestStart).
+  if (evalStart === -1) {
+    evalStart = bestStart;
+  }
+
+  let evalEnd = evalStart;
+  while (evalEnd < bestEnd && rows[evalEnd].timestampSec - rows[evalStart].timestampSec < targetWindowSec) {
+    evalEnd++;
+  }
+
+  const fullStartIdx = evalStart;
+  const startRow = rows[fullStartIdx];
+  const endRow = rows[bestEnd];
+  const totalDurationMin = (endRow.timestampSec - startRow.timestampSec) / 60;
 
   // Window references
   const evalStartRow = rows[evalStart];
@@ -483,6 +662,7 @@ function calculateDwellStats(
   const minRead = Math.min(...allVals);
   const maxRead = Math.max(...allVals);
   const spread = Math.round((maxRead - minRead) * 10) / 10;
+  const roundedOvershoot = Math.round(maxOvershoot * 10) / 10;
 
   return {
     targetTemp: target,
@@ -491,7 +671,7 @@ function calculateDwellStats(
     fullStartTimeStr: startRow.timeStr,
     fullEndTimeStr: endRow.timeStr,
     fullDurationMinutes: Math.round(totalDurationMin),
-    fullStartIndex: bestStart,
+    fullStartIndex: fullStartIdx,
     fullEndIndex: bestEnd,
 
     // Evaluation Window
@@ -506,12 +686,15 @@ function calculateDwellStats(
     endTimeStr: evalEndRow.timeStr,
     durationMinutes: capturedDurationMin,
 
-    maxOvershoot: Math.round(maxOvershoot * 10) / 10,
+    maxOvershoot: roundedOvershoot,
     channelReadings,
     channelMin,
     channelMax,
     isDurationCompliant: (totalDurationMin * 60) >= (minDurationMinutes * 60 - 1),
-    isSpreadCompliant: maxRead <= target + tolerance && minRead >= target - tolerance,
+    isSpreadCompliant:
+      maxRead <= target + tolerance &&
+      minRead >= target - tolerance &&
+      roundedOvershoot <= target + tolerance,
     tempSpread: spread,
   };
 }

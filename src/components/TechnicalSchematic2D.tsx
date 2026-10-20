@@ -5,7 +5,13 @@ import {
   ThermocoupleChannel,
   DimUnit,
 } from '../types/tus';
-import { getLogicalWireRiggingSchedule } from '../utils/ams2750';
+import {
+  getLogicalWireRiggingSchedule,
+  assignSensorChannelNumber,
+  clearAllSensorNumbers,
+  resetSequentialSensorNumbers,
+  formatBaseSensorLocation,
+} from '../utils/ams2750';
 import {
   Camera,
   Layers,
@@ -23,6 +29,11 @@ import {
   Sparkles,
   Lock,
   Unlock,
+  Eraser,
+  Hash,
+  X,
+  Check,
+  ArrowRight,
 } from 'lucide-react';
 
 interface TechnicalSchematic2DProps {
@@ -32,6 +43,7 @@ interface TechnicalSchematic2DProps {
   dimUnit: DimUnit;
   selectedChannelId: string | null;
   onSelectChannel: (id: string) => void;
+  onUpdateChannels?: (channels: ThermocoupleChannel[]) => void;
   onExportImageReady?: (dataUrl: string) => void;
 }
 
@@ -42,9 +54,13 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
   dimUnit,
   selectedChannelId,
   onSelectChannel,
+  onUpdateChannels,
   onExportImageReady,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const channelInputRef = useRef<HTMLInputElement | null>(null);
+  const [editingTriangleId, setEditingTriangleId] = useState<string | null>(null);
+  const [channelInputValue, setChannelInputValue] = useState<string>('');
 
   // Orientation settings matching Picture 1 standard:
   // Azimuth: Angle around vertical axis (around 32 degrees)
@@ -104,6 +120,28 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
   };
 
   const handleMouseUp = () => {
+    setIsDragging(false);
+    setActiveCallout(null);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    setIsDragging(true);
+    setDragStart({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - dragStart.x;
+    const dy = e.touches[0].clientY - dragStart.y;
+    if (!rotationLocked) {
+      setAzimuthDeg((prev) => (prev + dx * 0.75 + 360) % 360);
+      setElevationDeg((prev) => Math.max(-20, Math.min(85, prev - dy * 0.5)));
+    }
+    setDragStart({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+  };
+
+  const handleTouchEnd = () => {
     setIsDragging(false);
     setActiveCallout(null);
   };
@@ -363,151 +401,229 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
   // Selected channel details
   const selectedChannel = channels.find((c) => c.id === selectedChannelId) || channels[0];
   const selectedProj = selectedChannel ? project3Dto2D(selectedChannel.x, selectedChannel.y, selectedChannel.z) : null;
+  const editingChannel = channels.find((c) => c.id === editingTriangleId) || null;
+
+  // Keep popover input value synced if the channel's number is changed externally in the Sensor Manager table
+  useEffect(() => {
+    if (!editingChannel) return;
+    const expectedVal = editingChannel.channelNumber > 0 ? String(editingChannel.channelNumber) : '';
+    setChannelInputValue(expectedVal);
+  }, [editingChannel?.id, editingChannel?.channelNumber]);
+
+  // Re-export 2D CAD diagram snapshot whenever channel numbers or positions change so Report Preview stays synced
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      exportImage();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [channels, exportImage]);
+
+  // Auto-focus the channel input whenever a triangle is clicked
+  useEffect(() => {
+    if (editingTriangleId && channelInputRef.current) {
+      channelInputRef.current.focus();
+      channelInputRef.current.select();
+    }
+  }, [editingTriangleId]);
+
+  // Clear all channel numbering on schematic & sensor manager
+  const handleClearAllNumbering = () => {
+    if (!onUpdateChannels) return;
+    const cleared = clearAllSensorNumbers(channels);
+    onUpdateChannels(cleared);
+    if (cleared[0]) {
+      onSelectChannel(cleared[0].id);
+      setEditingTriangleId(cleared[0].id);
+      setChannelInputValue('');
+    }
+    setCaptureFeedback('All sensor numbers cleared — click any empty triangle △ to assign its instrument channel!');
+    setTimeout(() => setCaptureFeedback(null), 3500);
+  };
+
+  // Restore sequential 1..N numbering
+  const handleResetSequentialNumbering = () => {
+    if (!onUpdateChannels) return;
+    const numbered = resetSequentialSensorNumbers(channels);
+    onUpdateChannels(numbered);
+    setEditingTriangleId(null);
+    setCaptureFeedback(`Numbered sensors sequentially (1–${channels.length})`);
+    setTimeout(() => setCaptureFeedback(null), 2500);
+  };
+
+  // Assign a field instrument channel number to the currently clicked triangle
+  // When commit = false (live typing in popover input), updates the sensor immediately across Schematic & Sensor Manager
+  // When commit = true (Enter / Assign / Number Pad / Blur), also resolves any duplicate channel number
+  const handleAssignTriangleChannel = (
+    targetId: string,
+    newNum: number,
+    advanceToNextEmpty = false,
+    commit = true
+  ) => {
+    if (!onUpdateChannels) return;
+    const cleanNum = Math.max(0, Math.floor(newNum) || 0);
+    const updated = assignSensorChannelNumber(channels, targetId, cleanNum, commit);
+
+    onUpdateChannels(updated);
+
+    if (advanceToNextEmpty) {
+      const nextEmpty = updated.find((c) => c.id !== targetId && c.channelNumber <= 0);
+      if (nextEmpty) {
+        onSelectChannel(nextEmpty.id);
+        setEditingTriangleId(nextEmpty.id);
+        setChannelInputValue('');
+      } else {
+        setEditingTriangleId(null);
+      }
+    } else {
+      setChannelInputValue(cleanNum > 0 ? String(cleanNum) : '');
+    }
+  };
 
   return (
     <div
-      className={`relative w-full h-full min-h-[520px] rounded-2xl overflow-hidden border shadow-2xl flex flex-col transition-colors ${
+      className={`relative w-full rounded-2xl overflow-hidden border shadow-2xl flex flex-col transition-colors ${
         isWhiteTheme
           ? 'bg-white border-slate-300 text-slate-800'
           : 'bg-slate-950 border-slate-800 text-slate-100'
       }`}
-      onMouseDown={(e) => handleMouseDown(e)}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
     >
-      {/* Top Floating Control Bar */}
-      <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
-        {/* Empty container to maintain layout */}
-        <div />
+      {/* Top Control Bar (Docked cleanly above canvas so it never overlaps the schematic on any screen) */}
+      <div
+        className={`px-3 py-2 border-b flex flex-wrap items-center justify-between gap-2 z-10 ${
+          isWhiteTheme
+            ? 'bg-slate-100 border-slate-300'
+            : 'bg-slate-900 border-slate-800'
+        }`}
+      >
+        {/* Left: Channel Numbering Quick Actions */}
+        {onUpdateChannels ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={handleClearAllNumbering}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-600 hover:bg-amber-500 text-white shadow-sm cursor-pointer transition-colors"
+              title="Clear all triangle numbers so you can click each empty triangle △ and enter the Field Instrument Channel #"
+            >
+              <Eraser className="w-3.5 h-3.5 shrink-0" />
+              <span>Clear All Numbering</span>
+            </button>
+            <button
+              onClick={handleResetSequentialNumbering}
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold cursor-pointer border transition-colors ${
+                isWhiteTheme
+                  ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-200'
+                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+              }`}
+              title="Restore sequential numbering (1 to N)"
+            >
+              <RotateCcw className="w-3 h-3 shrink-0" />
+              <span>Reset 1–{channels.length}</span>
+            </button>
+            <span
+              className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold ${
+                channels.some((c) => c.channelNumber <= 0)
+                  ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/40'
+                  : isWhiteTheme
+                  ? 'text-slate-600'
+                  : 'text-slate-400'
+              }`}
+            >
+              {channels.filter((c) => c.channelNumber > 0).length}/{channels.length} Mapped
+            </span>
+          </div>
+        ) : (
+          <div />
+        )}
 
-        {/* View Angle Presets & Export Actions */}
-        <div
-          className={`pointer-events-auto flex items-center gap-1.5 rounded-xl p-1 shadow-md border ${
-            isWhiteTheme
-              ? 'bg-slate-100/95 border-slate-300'
-              : 'bg-slate-900/90 border-slate-700'
-          }`}
-        >
-          <button
-            onClick={() => handleSetPreset('balanced')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
-              activeViewPreset === 'balanced'
-                ? 'bg-blue-600 text-white font-bold shadow-sm hover:bg-blue-500'
-                : isWhiteTheme
-                ? 'text-slate-700 hover:bg-slate-200'
-                : 'text-slate-300 hover:bg-slate-800'
-            }`}
-            title="Balanced 3D Isometric View"
-          >
-            Balanced View
-          </button>
-          <button
-            onClick={() => handleSetPreset('iso45')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
-              activeViewPreset === 'iso45'
-                ? 'bg-blue-600 text-white font-bold shadow-sm hover:bg-blue-500'
-                : isWhiteTheme
-                ? 'text-slate-700 hover:bg-slate-200'
-                : 'text-slate-300 hover:bg-slate-800'
-            }`}
-          >
-            Isometric 45°
-          </button>
-          <button
-            onClick={() => handleSetPreset('top')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
-              activeViewPreset === 'top'
-                ? 'bg-blue-600 text-white font-bold shadow-sm hover:bg-blue-500'
-                : isWhiteTheme
-                ? 'text-slate-700 hover:bg-slate-200'
-                : 'text-slate-300 hover:bg-slate-800'
-            }`}
-          >
-            Plan View
-          </button>
-
-          <div className="w-[1px] h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
+        {/* Right: View Angle Presets & Export Actions */}
+        <div className="flex flex-wrap items-center gap-1">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => handleSetPreset('balanced')}
+              className={`px-2 py-1 rounded-lg text-[11px] cursor-pointer transition-colors ${
+                activeViewPreset === 'balanced'
+                  ? 'bg-blue-600 text-white font-bold shadow-sm hover:bg-blue-500'
+                  : isWhiteTheme
+                  ? 'text-slate-700 hover:bg-slate-200'
+                  : 'text-slate-300 hover:bg-slate-800'
+              }`}
+              title="Balanced 3D Isometric View"
+            >
+              Balanced
+            </button>
+            <button
+              onClick={() => handleSetPreset('iso45')}
+              className={`px-2 py-1 rounded-lg text-[11px] cursor-pointer transition-colors ${
+                activeViewPreset === 'iso45'
+                  ? 'bg-blue-600 text-white font-bold shadow-sm hover:bg-blue-500'
+                  : isWhiteTheme
+                  ? 'text-slate-700 hover:bg-slate-200'
+                  : 'text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              Iso 45°
+            </button>
+            <button
+              onClick={() => handleSetPreset('top')}
+              className={`px-2 py-1 rounded-lg text-[11px] cursor-pointer transition-colors ${
+                activeViewPreset === 'top'
+                  ? 'bg-blue-600 text-white font-bold shadow-sm hover:bg-blue-500'
+                  : isWhiteTheme
+                  ? 'text-slate-700 hover:bg-slate-200'
+                  : 'text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              Plan
+            </button>
+          </div>
 
           {/* Zoom controls */}
-          <div className="flex items-center gap-1 px-1">
+          <div className="flex items-center gap-0.5 px-1">
             <button
               onClick={() => setZoom((z) => Math.max(0.4, z - 0.2))}
-              className={`p-1.5 rounded-lg cursor-pointer ${isWhiteTheme ? 'text-slate-700 hover:bg-slate-200' : 'text-slate-300 hover:bg-slate-800'}`}
+              className={`p-1 rounded-lg cursor-pointer ${isWhiteTheme ? 'text-slate-700 hover:bg-slate-200' : 'text-slate-300 hover:bg-slate-800'}`}
               title="Zoom Out"
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
-            <span className="text-[10px] font-mono font-bold w-10 text-center">{Math.round(zoom * 100)}%</span>
+            <span className="text-[10px] font-mono font-bold w-9 text-center">{Math.round(zoom * 100)}%</span>
             <button
               onClick={() => setZoom((z) => Math.min(3.5, z + 0.2))}
-              className={`p-1.5 rounded-lg cursor-pointer ${isWhiteTheme ? 'text-slate-700 hover:bg-slate-200' : 'text-slate-300 hover:bg-slate-800'}`}
+              className={`p-1 rounded-lg cursor-pointer ${isWhiteTheme ? 'text-slate-700 hover:bg-slate-200' : 'text-slate-300 hover:bg-slate-800'}`}
               title="Zoom In"
             >
               <ZoomIn className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="w-[1px] h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
-
           <button
             onClick={() => setRotationLocked(!rotationLocked)}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition-colors flex items-center gap-1.5 ${
+            className={`px-2 py-1 rounded-lg text-[11px] font-semibold cursor-pointer border transition-colors flex items-center gap-1 ${
               rotationLocked
                 ? 'bg-amber-950/80 border-amber-700 text-amber-300'
+                : isWhiteTheme
+                ? 'bg-white border-slate-300 text-slate-700'
                 : 'bg-slate-800 border-slate-700 text-slate-400'
             }`}
-            title="Lock rotation to allow dragging of labels"
+            title="Lock rotation"
           >
-            {rotationLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
-            <span>{rotationLocked ? 'Rotation Locked' : 'Rotation Unlocked'}</span>
+            {rotationLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+            <span className="hidden sm:inline">{rotationLocked ? 'Locked' : 'Unlocked'}</span>
           </button>
-
-
-          {/* 360° Rotation controls */}
-          <div className="flex items-center gap-1 px-1">
-            <button
-              onClick={() => setAzimuthDeg((a) => (a - 45 + 360) % 360)}
-              className={`p-1.5 rounded-lg cursor-pointer ${isWhiteTheme ? 'text-slate-700 hover:bg-slate-200' : 'text-slate-300 hover:bg-slate-800'}`}
-              title="Rotate 45° Left"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-            <input
-              type="range"
-              min="0"
-              max="360"
-              step="1"
-              value={Math.round(azimuthDeg)}
-              onChange={(e) => setAzimuthDeg(parseFloat(e.target.value) || 0)}
-              className="w-20 accent-blue-600 cursor-pointer"
-              title="360° Azimuth Rotation"
-            />
-            <button
-              onClick={() => setAzimuthDeg((a) => (a + 45) % 360)}
-              className={`p-1.5 rounded-lg cursor-pointer ${isWhiteTheme ? 'text-slate-700 hover:bg-slate-200' : 'text-slate-300 hover:bg-slate-800'}`}
-              title="Rotate 45° Right"
-            >
-              <RotateCw className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="w-[1px] h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
 
           <button
             onClick={() => setShowPermanentSensors(!showPermanentSensors)}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition-colors flex items-center gap-1.5 ${
+            className={`px-2 py-1 rounded-lg text-[11px] font-semibold cursor-pointer border transition-colors flex items-center gap-1 ${
               showPermanentSensors
                 ? 'bg-cyan-950/80 border-cyan-700 text-cyan-300'
+                : isWhiteTheme
+                ? 'bg-white border-slate-300 text-slate-600'
                 : 'bg-slate-800 border-slate-700 text-slate-400'
             }`}
             title="Toggle display of permanent Control & Overtemp sensors"
           >
-            <Compass className="w-3.5 h-3.5" />
-            <span>Permanent TCs</span>
+            <Compass className="w-3 h-3" />
+            <span className="hidden sm:inline">Perm TCs</span>
           </button>
-
-          <div className="w-[1px] h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
 
           {/* Theme Toggle (Drafting White vs Dark Blueprint) */}
           <button
@@ -523,36 +639,40 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
           {/* Export CAD button */}
           <button
             onClick={exportImage}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm cursor-pointer"
             title="Capture high-resolution 2D CAD schematic for Word document"
           >
-            <Camera className="w-3.5 h-3.5" />
-            <span>Capture 2D CAD</span>
+            <Camera className="w-3.5 h-3.5 shrink-0" />
+            <span>Capture CAD</span>
           </button>
         </div>
       </div>
 
       {/* Capture Feedback Notification */}
       {captureFeedback && (
-        <div className="absolute top-16 right-4 z-20 bg-emerald-600 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl shadow-xl animate-fade-in flex items-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 fill-current" />
+        <div className="mx-3 mt-2 z-20 bg-emerald-600 text-white font-bold text-xs px-3 py-1.5 rounded-xl shadow-lg flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5 fill-current shrink-0" />
           <span>{captureFeedback}</span>
         </div>
       )}
 
       {/* SVG Canvas Rendering 2D Isometric Technical Schematic */}
       <div
-        className="w-full flex-1 relative overflow-auto flex items-center justify-center p-2 cursor-grab active:cursor-grabbing"
-        onMouseDown={handleMouseDown}
+        className="w-full h-[320px] sm:h-[420px] xl:h-[500px] relative overflow-hidden flex items-center justify-center p-1 sm:p-2 cursor-grab active:cursor-grabbing touch-none"
+        onMouseDown={(e) => handleMouseDown(e)}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         onWheel={handleWheel}
       >
         <svg
           ref={svgRef}
           viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-          className="w-full h-full max-w-[1100px] select-none"
+          className="w-full h-full max-w-full max-h-full select-none"
+          preserveAspectRatio="xMidYMid meet"
           style={{
             fontFamily: '"JetBrains Mono", Arial, sans-serif',
           }}
@@ -888,14 +1008,18 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
           {/* ----------------------------------------------------------- */}
           {/* 6. THERMOCOUPLE SENSOR MARKERS (Upright Triangles as in Picture 1) */}
           {/* Triangular badge △ with white fill, black border, number    */}
+          {/* When channelNumber === 0, renders as an EMPTY TRIANGLE △    */}
+          {/* Clicking any triangle opens the Field Instrument Channel #  */}
+          {/* assignment popover!                                         */}
           {/* ----------------------------------------------------------- */}
           <g>
             {projectedChannels.map((ch) => {
-              const isSelected = ch.id === selectedChannelId;
+              const isSelected = ch.id === selectedChannelId || ch.id === editingTriangleId;
+              const isUnassigned = ch.channelNumber <= 0;
               const tx = ch.px;
               const ty = ch.py;
               // Triangle dimensions
-              const size = isSelected ? 16 : 14;
+              const size = isSelected ? 17 : 14.5;
               const topY = ty - size * 0.95;
               const leftX = tx - size;
               const rightX = tx + size;
@@ -904,31 +1028,80 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
               return (
                 <g
                   key={ch.id}
-                  onClick={() => onSelectChannel(ch.id)}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectChannel(ch.id);
+                    if (onUpdateChannels) {
+                      setEditingTriangleId(ch.id);
+                      setChannelInputValue(ch.channelNumber > 0 ? String(ch.channelNumber) : '');
+                    }
+                  }}
                   className="cursor-pointer group"
                 >
+                  {/* Invisible slightly larger hit target for easy clicking */}
+                  <circle cx={tx} cy={ty} r={size + 6} fill="transparent" />
+
+                  {/* Pulse ring when actively editing this triangle */}
+                  {ch.id === editingTriangleId && (
+                    <circle
+                      cx={tx}
+                      cy={ty}
+                      r={size + 5}
+                      fill="none"
+                      stroke="#F59E0B"
+                      strokeWidth="2"
+                      strokeDasharray="3,2"
+                    />
+                  )}
+
                   {/* Triangle Path: Peak at (tx, topY), bottom-right (rightX, bottomY), bottom-left (leftX, bottomY) */}
                   <polygon
                     points={`${tx},${topY} ${rightX},${bottomY} ${leftX},${bottomY}`}
-                    fill={ch.failed ? '#FECACA' : (isSelected ? '#FEF08A' : '#FFFFFF')}
-                    stroke={ch.failed ? '#B91C1C' : (isSelected ? '#DC2626' : '#000000')}
-                    strokeWidth={isSelected ? '2.4' : '1.8'}
+                    fill={
+                      ch.failed
+                        ? '#FECACA'
+                        : isSelected
+                        ? '#FEF08A'
+                        : isUnassigned
+                        ? '#FFFBEB'
+                        : '#FFFFFF'
+                    }
+                    stroke={
+                      ch.failed
+                        ? '#B91C1C'
+                        : isSelected
+                        ? '#DC2626'
+                        : isUnassigned
+                        ? '#D97706'
+                        : '#000000'
+                    }
+                    strokeWidth={isSelected ? '2.5' : isUnassigned ? '2.0' : '1.8'}
+                    strokeDasharray={isUnassigned && !isSelected ? '3,1.5' : 'none'}
                     strokeLinejoin="round"
                     filter="url(#badge-shadow)"
                   />
 
-                  {/* Channel Number Text Centered inside Triangle */}
-                  <text
-                    x={tx}
-                    y={ty + 3}
-                    textAnchor="middle"
-                    fill={isSelected ? '#991B1B' : '#000000'}
-                    fontSize={ch.channelNumber > 9 ? '10' : '11.5'}
-                    fontWeight="bold"
-                    style={{ pointerEvents: 'none' }}
-                  >
-                    {ch.channelNumber}
-                  </text>
+                  {/* Channel Number Text Centered inside Triangle (Empty when unassigned!) */}
+                  {ch.channelNumber > 0 && (
+                    <text
+                      x={tx}
+                      y={ty + 3}
+                      textAnchor="middle"
+                      fill={isSelected ? '#991B1B' : '#000000'}
+                      fontSize={ch.channelNumber > 9 ? '10' : '11.5'}
+                      fontWeight="bold"
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      {ch.channelNumber}
+                    </text>
+                  )}
+
+                  <title>
+                    {ch.channelNumber > 0
+                      ? `TC ${ch.channelNumber} (${ch.label}) — Click to change Field Instrument Channel #`
+                      : `Empty Sensor Triangle (${ch.label}) — Click to enter Field Instrument Channel #`}
+                  </title>
                 </g>
               );
             })}
@@ -1006,7 +1179,7 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
 
       {/* Bottom Floating Control Dock */}
       <div
-        className={`px-4 py-3 border-t flex flex-wrap items-center justify-between gap-3 text-xs ${
+        className={`px-3 py-2.5 border-t flex flex-wrap items-center justify-between gap-2 text-xs ${
           isWhiteTheme
             ? 'bg-slate-50 border-slate-300 text-slate-700'
             : 'bg-slate-900 border-slate-800 text-slate-300'
@@ -1028,24 +1201,22 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
           >
             Wire Grid Web
           </button>
-
-
         </div>
 
         {/* Orientation & Zoom Fine-tuning Sliders */}
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-slate-500">Angle:</span>
             <input
               type="range"
               min="0"
-              max="90"
-              value={azimuthDeg}
-              onChange={(e) => setAzimuthDeg(parseInt(e.target.value))}
-              className="w-20 accent-blue-600 cursor-pointer"
-              title="Rotate viewing angle"
+              max="360"
+              value={Math.round(azimuthDeg)}
+              onChange={(e) => setAzimuthDeg(parseInt(e.target.value) || 0)}
+              className="w-16 sm:w-20 accent-blue-600 cursor-pointer"
+              title="Rotate viewing angle (0–360°)"
             />
-            <span className="font-mono text-[11px] w-6">{azimuthDeg}°</span>
+            <span className="font-mono text-[11px] w-7">{Math.round(azimuthDeg)}°</span>
           </div>
 
           <div className="flex items-center gap-1.5">
@@ -1054,31 +1225,196 @@ export const TechnicalSchematic2D: React.FC<TechnicalSchematic2DProps> = ({
               type="range"
               min="5"
               max="60"
-              value={elevationDeg}
-              onChange={(e) => setElevationDeg(parseInt(e.target.value))}
-              className="w-16 accent-blue-600 cursor-pointer"
+              value={Math.round(elevationDeg)}
+              onChange={(e) => setElevationDeg(parseInt(e.target.value) || 0)}
+              className="w-14 sm:w-16 accent-blue-600 cursor-pointer"
               title="Pitch up/down"
             />
-            <span className="font-mono text-[11px] w-6">{elevationDeg}°</span>
+            <span className="font-mono text-[11px] w-6">{Math.round(elevationDeg)}°</span>
           </div>
 
           {/* Quick Channel Inspection Dropdown */}
-          <div className="flex items-center gap-1.5 pl-2 border-l border-slate-300 dark:border-slate-700">
-            <span className="text-[11px] text-slate-500">Inspect TC:</span>
+          <div className="flex items-center gap-1.5 min-w-0 max-w-full">
+            <span className="text-[11px] text-slate-500 shrink-0">Inspect:</span>
             <select
               value={selectedChannelId || ''}
-              onChange={(e) => onSelectChannel(e.target.value)}
-              className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs font-mono text-blue-600 font-bold focus:outline-none"
+              onChange={(e) => {
+                onSelectChannel(e.target.value);
+                if (onUpdateChannels) {
+                  const found = channels.find((c) => c.id === e.target.value);
+                  setEditingTriangleId(e.target.value);
+                  setChannelInputValue(found && found.channelNumber > 0 ? String(found.channelNumber) : '');
+                }
+              }}
+              className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs font-mono text-blue-600 font-bold focus:outline-none max-w-[190px] sm:max-w-[220px] truncate"
             >
               {channels.map((ch) => (
                 <option key={ch.id} value={ch.id}>
-                  TC {ch.channelNumber}: {ch.label}
+                  {ch.channelNumber > 0 ? `TC ${ch.channelNumber}` : '△ Unassigned'}: {ch.label.replace(/^TC\s*(?:\d+|—|\?)\s*:\s*/i, '')}
                 </option>
               ))}
             </select>
           </div>
         </div>
       </div>
+
+      {/* Interactive Triangle Field Instrument Channel Assignment Popover */}
+      {onUpdateChannels && editingChannel && (
+        <div
+          className="absolute bottom-14 left-2 right-2 sm:left-4 sm:right-auto sm:w-80 z-30 bg-slate-900/95 backdrop-blur-md border-2 border-amber-500/80 rounded-2xl p-3.5 sm:p-4 shadow-2xl text-slate-100 space-y-2.5 max-h-[82%] overflow-y-auto"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-2 border-b border-slate-800 pb-2.5">
+            <div>
+              <div className="flex items-center gap-1.5 text-amber-400 text-[11px] font-bold uppercase tracking-wider">
+                <Hash className="w-3.5 h-3.5" />
+                <span>Assign Field Instrument Channel</span>
+              </div>
+              <div className="text-xs font-bold text-white mt-0.5">
+                {formatBaseSensorLocation(editingChannel.label)}
+              </div>
+              <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                Left: {editingChannel.distLeft}{dimUnit} • Front: {editingChannel.distFront}{dimUnit} • Floor: {editingChannel.distFloor}{dimUnit}
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                const num = parseInt(channelInputValue, 10);
+                handleAssignTriangleChannel(editingChannel.id, !isNaN(num) && num > 0 ? num : 0, false, true);
+                setEditingTriangleId(null);
+              }}
+              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+              title="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Direct Number Input Form (Live Synced with Sensor Manager on every keystroke) */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const num = parseInt(channelInputValue, 10);
+              if (!isNaN(num) && num > 0) {
+                handleAssignTriangleChannel(editingChannel.id, num, true, true);
+              } else {
+                handleAssignTriangleChannel(editingChannel.id, 0, false, true);
+              }
+            }}
+            className="space-y-2"
+          >
+            <label className="block text-[11px] text-slate-300 font-medium">
+              Enter Field Instrument Port / Channel #:
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                ref={channelInputRef}
+                type="number"
+                min={1}
+                max={999}
+                placeholder="e.g. 1, 5, 14..."
+                value={channelInputValue}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setChannelInputValue(val);
+                  const trimmed = val.trim();
+                  const parsed = trimmed === '' ? 0 : Math.max(0, parseInt(trimmed, 10) || 0);
+                  if (onUpdateChannels) {
+                    onUpdateChannels(assignSensorChannelNumber(channels, editingChannel.id, parsed, false));
+                  }
+                }}
+                onBlur={(e) => {
+                  const trimmed = e.target.value.trim();
+                  const parsed = trimmed === '' ? 0 : Math.max(0, parseInt(trimmed, 10) || 0);
+                  if (onUpdateChannels) {
+                    onUpdateChannels(assignSensorChannelNumber(channels, editingChannel.id, parsed, true));
+                  }
+                }}
+                className="w-full bg-slate-950 border border-amber-500/80 rounded-xl px-3 py-2 text-sm font-mono font-bold text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+              <button
+                type="submit"
+                className="shrink-0 flex items-center gap-1 px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs cursor-pointer transition-colors shadow"
+                title="Confirm channel number and jump to next empty triangle"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Assign</span>
+              </button>
+            </div>
+          </form>
+
+          {/* Quick-Click Number Pad */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-[10px] text-slate-400">
+              <span>Or tap a channel number:</span>
+              <span>
+                Current:{' '}
+                <strong className="text-amber-300 font-mono">
+                  {editingChannel.channelNumber > 0 ? `CH-${String(editingChannel.channelNumber).padStart(2, '0')}` : 'Empty △'}
+                </strong>
+              </span>
+            </div>
+            <div className="grid grid-cols-6 gap-1 max-h-28 overflow-y-auto pr-0.5">
+              {Array.from({ length: Math.max(channels.length, 12) }, (_, i) => i + 1).map((num) => {
+                const isCurrent = editingChannel.channelNumber === num;
+                const usedByOther = channels.some((c) => c.id !== editingChannel.id && c.channelNumber === num);
+                return (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => handleAssignTriangleChannel(editingChannel.id, num, true)}
+                    className={`py-1.5 rounded-lg font-mono text-xs font-bold border transition-all cursor-pointer ${
+                      isCurrent
+                        ? 'bg-amber-500 text-slate-950 border-amber-400 shadow'
+                        : usedByOther
+                        ? 'bg-slate-950/60 text-slate-500 border-slate-800 hover:border-amber-500/50 hover:text-slate-300'
+                        : 'bg-slate-800 text-white border-slate-700 hover:bg-amber-500/20 hover:border-amber-400'
+                    }`}
+                    title={
+                      isCurrent
+                        ? `Currently assigned to Channel ${num}`
+                        : usedByOther
+                        ? `Channel ${num} is assigned to another triangle (click to move Channel ${num} here)`
+                        : `Assign Channel ${num} to this triangle`
+                    }
+                  >
+                    {num}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Footer actions */}
+          <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-[11px]">
+            <button
+              type="button"
+              onClick={() => handleAssignTriangleChannel(editingChannel.id, 0, false)}
+              className="text-rose-400 hover:text-rose-300 font-semibold cursor-pointer"
+            >
+              Clear This Triangle △
+            </button>
+            {channels.some((c) => c.id !== editingChannel.id && c.channelNumber <= 0) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const nextEmpty = channels.find((c) => c.id !== editingChannel.id && c.channelNumber <= 0);
+                  if (nextEmpty) {
+                    onSelectChannel(nextEmpty.id);
+                    setEditingTriangleId(nextEmpty.id);
+                    setChannelInputValue('');
+                  }
+                }}
+                className="flex items-center gap-1 text-cyan-400 hover:text-cyan-300 font-semibold cursor-pointer"
+              >
+                <span>Next Empty △</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

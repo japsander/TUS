@@ -21,6 +21,7 @@ import {
   TrendingUp,
   Upload,
   AlertTriangle,
+  Calculator,
 } from 'lucide-react';
 import { CsvTusImportModal } from './CsvTusImportModal';
 
@@ -37,6 +38,7 @@ interface SurveyDataSectionProps {
   onUpdateMeta?: (meta: SurveyMetadata) => void;
   onUpdateTrendData?: (data: TusTrendData[]) => void;
   onUpdateDwellPeriods?: (periods: DetectedDwellPeriod[]) => void;
+  onOpenMethodology?: () => void;
 }
 
 export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
@@ -52,6 +54,7 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
   onUpdateMeta,
   onUpdateTrendData,
   onUpdateDwellPeriods,
+  onOpenMethodology,
 }) => {
   const [activeSetpointId, setActiveSetpointId] = useState<string>(
     setpoints[0]?.id || ''
@@ -198,8 +201,8 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
       )}
 
       {/* Setpoint Navigation & Selector */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 sm:p-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {setpoints.map((sp, idx) => {
             const spAnalysis = evaluateSetpoint(
               sp,
@@ -245,6 +248,17 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {onOpenMethodology && (
+            <button
+              onClick={onOpenMethodology}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-950/90 hover:bg-indigo-900 text-indigo-200 border border-indigo-700/80 text-xs font-semibold shadow-sm transition-all cursor-pointer"
+              title="Open Auditor Calculation & Pass/Fail Methodology Reference"
+            >
+              <Calculator className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Calculation &amp; Pass/Fail Info</span>
+            </button>
+          )}
+
           {/* Import TUS CSV Button */}
           <button
             onClick={() => setCsvModalOpen(true)}
@@ -380,7 +394,7 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
                     Furnace Control Instrument (AMS 2750 Rev H § 3.5.13.3.i & Table 18)
                   </label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div>
                       <label className="block text-[10px] text-slate-400 mb-1">Control Setpoint</label>
                       <input
@@ -512,20 +526,21 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
             </div>
           </div>
 
-          {/* Detailed Channel Readings & Corrections Table */}
+          {/* Detailed Channel Readings & Corrections Table (Desktop/Tablet) & Card List (Mobile) */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-[820px]">
+            {/* Desktop & Landscape Tablet Fluid Table (Zero Horizontal Scroll) */}
+            <div className="hidden md:block w-full">
+              <table className="w-full text-left border-collapse table-auto">
                 <thead>
-                  <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                    <th className="py-3 px-3 w-16 text-center">TC #</th>
-                    <th className="py-3 px-3">Location Description</th>
-                    <th className="py-3 px-3 text-center">Raw Reading ({tempUnit})</th>
-                    <th className="py-3 px-3 text-center text-amber-400">TC Correction ({tempUnit})</th>
-                    <th className="py-3 px-3 text-center font-bold text-cyan-400">Corrected Temp ({tempUnit})</th>
-                    <th className="py-3 px-3 text-center">Delta From Target</th>
-                    <th className="py-3 px-3 text-center w-28" title="AMS 2750 Rev H § 3.5.10.2 Open/Broken Sensor Failure Toggle">Sensor State</th>
-                    <th className="py-3 px-3 text-center w-24">Result</th>
+                  <tr className="bg-slate-950/80 border-b border-slate-800 text-[10px] xl:text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                    <th className="py-2.5 px-2 w-14 text-center">TC #</th>
+                    <th className="py-2.5 px-2.5">Location Description</th>
+                    <th className="py-2.5 px-2 text-center">Raw ({tempUnit})</th>
+                    <th className="py-2.5 px-2 text-center text-amber-400">TC Corr ({tempUnit})</th>
+                    <th className="py-2.5 px-2 text-center font-bold text-cyan-400">Corrected ({tempUnit})</th>
+                    <th className="py-2.5 px-2 text-center">Delta</th>
+                    <th className="py-2.5 px-2 text-center w-24" title="AMS 2750 Rev H § 3.5.10.2 Open/Broken Sensor Failure Toggle">Sensor State</th>
+                    <th className="py-2.5 px-2 text-center w-20">Result</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 text-xs font-mono">
@@ -540,11 +555,11 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                           : 'bg-red-950/20'
                       }
                     >
-                      <td className="py-2.5 px-3 text-center font-bold text-slate-300">
-                        {cr.channelNumber}
+                      <td className="py-2 px-2 text-center font-bold text-slate-300">
+                        {cr.channelNumber > 0 ? cr.channelNumber : '△'}
                       </td>
-                      <td className="py-2.5 px-3 font-sans text-slate-200">{cr.label}</td>
-                      <td className="py-2.5 px-3 text-center">
+                      <td className="py-2 px-2.5 font-sans text-slate-200 truncate max-w-[200px] xl:max-w-none">{cr.label}</td>
+                      <td className="py-2 px-2 text-center">
                         <input
                           type="number"
                           step="0.1"
@@ -553,10 +568,10 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                           onChange={(e) =>
                             handleReadingChange(currentSetpoint.id, cr.channelId, e.target.value)
                           }
-                          className="w-24 text-center bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-cyan-500 focus:outline-none disabled:opacity-40"
+                          className="w-20 text-center bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-xs text-white focus:border-cyan-500 focus:outline-none disabled:opacity-40"
                         />
                       </td>
-                      <td className="py-2.5 px-3 text-center">
+                      <td className="py-2 px-2 text-center">
                         <input
                           type="number"
                           step="0.05"
@@ -565,20 +580,20 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                           onChange={(e) =>
                             handleCorrectionChange(cr.channelId, currentSetpoint.id, e.target.value)
                           }
-                          className="w-20 text-center bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-amber-300 focus:border-amber-500 focus:outline-none disabled:opacity-40"
+                          className="w-16 text-center bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-xs text-amber-300 focus:border-amber-500 focus:outline-none disabled:opacity-40"
                         />
                       </td>
-                      <td className="py-2.5 px-3 text-center font-bold text-cyan-300 text-sm">
+                      <td className="py-2 px-2 text-center font-bold text-cyan-300 text-xs xl:text-sm">
                         {cr.failed ? 'OPEN / FAIL' : cr.correctedTemp.toFixed(1)}
                       </td>
-                      <td className="py-2.5 px-3 text-center text-slate-300">
+                      <td className="py-2 px-2 text-center text-slate-300">
                         {cr.failed
                           ? '—'
                           : cr.deltaFromTarget >= 0
                           ? `+${cr.deltaFromTarget.toFixed(1)}`
                           : cr.deltaFromTarget.toFixed(1)}
                       </td>
-                      <td className="py-2.5 px-3 text-center">
+                      <td className="py-2 px-2 text-center">
                         <button
                           type="button"
                           onClick={() => {
@@ -597,10 +612,10 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                           {cr.failed ? 'Failed (Open)' : 'Active'}
                         </button>
                       </td>
-                      <td className="py-2.5 px-3 text-center">
+                      <td className="py-2 px-2 text-center">
                         {cr.failed ? (
-                          <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800/60">
-                            EXCLUDED (§3.5.10.2)
+                          <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800/60">
+                            EXCLUDED
                           </span>
                         ) : (
                           <span
@@ -618,6 +633,113 @@ export const SurveyDataSection: React.FC<SurveyDataSectionProps> = ({
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Mobile & Portrait Tablet Card View (Zero Horizontal Scroll) */}
+            <div className="md:hidden divide-y divide-slate-800/80">
+              {analysis.channelResults.map((cr) => (
+                <div
+                  key={cr.channelId}
+                  className={`p-3.5 space-y-2.5 ${
+                    cr.failed
+                      ? 'bg-slate-950/70 opacity-75'
+                      : cr.inTolerance
+                      ? 'bg-slate-900/40'
+                      : 'bg-red-950/20'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-700 font-mono text-xs font-bold text-cyan-300 shrink-0">
+                        {cr.channelNumber > 0 ? `TC ${cr.channelNumber}` : '△ Unassigned'}
+                      </span>
+                      <span className="text-xs font-medium text-slate-200 truncate">{cr.label}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = channels.map((ch) =>
+                            ch.id === cr.channelId ? { ...ch, failed: !ch.failed } : ch
+                          );
+                          onUpdateChannels(updated);
+                        }}
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-colors cursor-pointer ${
+                          cr.failed
+                            ? 'bg-amber-600 text-slate-950'
+                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                        }`}
+                      >
+                        {cr.failed ? 'Failed (Open)' : 'Active'}
+                      </button>
+                      {cr.failed ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-950 text-amber-300 border border-amber-800/60">
+                          EXCLUDED
+                        </span>
+                      ) : (
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                            cr.inTolerance
+                              ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/60'
+                              : 'bg-red-950 text-red-400 border border-red-800/60'
+                          }`}
+                        >
+                          {cr.inTolerance ? 'PASS' : 'FAIL'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+                    <div className="bg-slate-950/80 border border-slate-800/80 rounded-lg p-2">
+                      <label className="block text-[9px] text-slate-500 uppercase mb-1">
+                        Raw ({tempUnit})
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        disabled={cr.failed}
+                        value={cr.rawReading}
+                        onChange={(e) =>
+                          handleReadingChange(currentSetpoint.id, cr.channelId, e.target.value)
+                        }
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-cyan-500 focus:outline-none disabled:opacity-40"
+                      />
+                    </div>
+                    <div className="bg-slate-950/80 border border-slate-800/80 rounded-lg p-2">
+                      <label className="block text-[9px] text-amber-400/80 uppercase mb-1">
+                        TC Corr ({tempUnit})
+                      </label>
+                      <input
+                        type="number"
+                        step="0.05"
+                        disabled={cr.failed}
+                        value={cr.tcCorrection}
+                        onChange={(e) =>
+                          handleCorrectionChange(cr.channelId, currentSetpoint.id, e.target.value)
+                        }
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-amber-300 focus:border-amber-500 focus:outline-none disabled:opacity-40"
+                      />
+                    </div>
+                    <div className="bg-slate-950/80 border border-slate-800/80 rounded-lg p-2 flex flex-col justify-between">
+                      <span className="text-[9px] text-cyan-400/80 uppercase">Corrected</span>
+                      <strong className="text-sm text-cyan-300">
+                        {cr.failed ? 'OPEN' : `${cr.correctedTemp.toFixed(1)} ${tempUnit}`}
+                      </strong>
+                    </div>
+                    <div className="bg-slate-950/80 border border-slate-800/80 rounded-lg p-2 flex flex-col justify-between">
+                      <span className="text-[9px] text-slate-500 uppercase">Delta Target</span>
+                      <strong className="text-sm text-slate-200">
+                        {cr.failed
+                          ? '—'
+                          : cr.deltaFromTarget >= 0
+                          ? `+${cr.deltaFromTarget.toFixed(1)} ${tempUnit}`
+                          : `${cr.deltaFromTarget.toFixed(1)} ${tempUnit}`}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

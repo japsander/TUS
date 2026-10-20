@@ -42,6 +42,7 @@ import { WireRiggingGuide } from './components/WireRiggingGuide';
 import { QWZInfoPanel } from './components/QWZInfoPanel';
 import { ReportPreviewModal } from './components/ReportPreviewModal';
 import { InstructionManual } from './components/InstructionManual';
+import { CalculationMethodologyModal } from './components/CalculationMethodologyModal';
 import {
   FileText,
   Download,
@@ -66,6 +67,7 @@ import {
   BookOpen,
   Save,
   FolderOpen,
+  Calculator,
 } from 'lucide-react';
 
 export default function App() {
@@ -454,8 +456,9 @@ export default function App() {
   // Diagram Snapshot for Docx Embedding
   const [diagramImageBase64, setDiagramImageBase64] = useState<string>('');
 
-  // Report Modal
+  // Report Modal & Calculation Methodology Modal
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [methodologyModalOpen, setMethodologyModalOpen] = useState(false);
 
   // Toggle Unit System (Metric UK default vs Imperial)
   const handleToggleUnit = (sys: UnitSystem) => {
@@ -766,89 +769,60 @@ export default function App() {
   ]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* ----------------------------------------------------- */}
       {/* 1. TOP HEADER & UK ACCREDITATION BANNER */}
       {/* ----------------------------------------------------- */}
-      <header className="bg-slate-900/90 border-b border-slate-800 sticky top-0 z-40 backdrop-blur-md px-4 lg:px-8 py-3">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          {/* Logo & Accreditation Badges */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
-              <Flame className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-extrabold text-base tracking-tight text-white">
-                  AMS 2750 Rev H & Nadcap AC7102/8 TUS Engine
-                </h1>
-                <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase flex items-center gap-1">
-                  <Globe2 className="w-3 h-3 inline" /> UK Standard (Metric)
-                </span>
-                <span
-                  className={`text-[10px] font-bold tracking-wider px-2 py-0.5 rounded uppercase border ${
-                    isOverallConformant
-                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                      : 'bg-red-500/20 text-red-400 border-red-500/30'
-                  }`}
-                >
-                  {isOverallConformant ? 'PASS — CONFORMANT' : 'FAIL — NON-CONFORMANT'}
-                </span>
+      <header className="bg-slate-900/95 border-b border-slate-800 sticky top-0 z-40 backdrop-blur-md px-3 sm:px-5 lg:px-6 py-2.5">
+        <div className="max-w-[1920px] mx-auto w-full space-y-2.5">
+          {/* Top Row: Brand Title + Global Action Buttons */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+            {/* Logo & Accreditation Badges */}
+            <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+                <Flame className="w-5 h-5" />
               </div>
-              <p className="text-xs text-slate-400 flex items-center gap-2">
-                <span>Furnace ID: <strong className="text-slate-200">{meta.furnaceId}</strong></span>
-                <span>•</span>
-                <span>
-                  QWZ Volume:{' '}
-                  <strong className="text-slate-200 font-mono">
-                    {volumeM3.toFixed(3)} m³ ({(volumeM3 * 1000).toFixed(0)} L)
-                  </strong>
-                </span>
-                <span>•</span>
-                <span>
-                  Min Required Sensors: <strong className="text-cyan-400 font-mono">{minSensors}</strong>
-                </span>
-              </p>
-            </div>
-          </div>
-
-            {/* Step Navigation Progress Bar (Desktop) */}
-            <div className="hidden lg:flex items-center gap-1 bg-slate-950/50 border border-slate-800 rounded-2xl p-1">
-              {STEPS.map((step, idx) => {
-                const Icon = step.icon;
-                const isActive = activeStep === step.id;
-                const isPast = STEPS.findIndex(s => s.id === activeStep) > idx;
-                return (
-                  <div key={step.id} className="flex items-center">
-                    <button
-                      onClick={() => setActiveStep(step.id)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                        isActive 
-                          ? 'bg-blue-600 text-white font-bold shadow-md' 
-                          : isPast 
-                            ? 'text-blue-400 hover:text-blue-300' 
-                            : 'text-slate-500 hover:text-slate-300'
-                      }`}
-                    >
-                      <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : isPast ? 'text-blue-500' : 'text-slate-600'}`} />
-                      <span className="text-[11px] whitespace-nowrap">{step.label.split('. ')[1]}</span>
-                    </button>
-                    {idx < STEPS.length - 1 && (
-                      <div className="w-4 h-px bg-slate-800 mx-1" />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Mobile Step Indicator */}
-            <div className="lg:hidden flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl">
-              <span className="text-[10px] font-bold text-blue-400">STEP {currentStepIndex + 1}/{STEPS.length}</span>
-              <span className="text-xs font-bold text-white truncate max-w-[120px]">{STEPS[currentStepIndex].label.split('. ')[1]}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                  <h1 className="font-extrabold text-sm sm:text-base tracking-tight text-white">
+                    AMS 2750 Rev H &amp; Nadcap AC7102/8 TUS Engine
+                  </h1>
+                  <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase inline-flex items-center gap-1">
+                    <Globe2 className="w-3 h-3 inline" /> {unitSystem === 'metric' ? 'Metric (°C / mm)' : 'Imperial (°F / in)'}
+                  </span>
+                  <span
+                    className={`text-[10px] font-bold tracking-wider px-2 py-0.5 rounded uppercase border ${
+                      isOverallConformant
+                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                        : 'bg-red-500/20 text-red-400 border-red-500/30'
+                    }`}
+                  >
+                    {isOverallConformant ? 'PASS — CONFORMANT' : 'FAIL — NON-CONFORMANT'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+                  <span>Furnace ID: <strong className="text-slate-200">{meta.furnaceId}</strong></span>
+                  <span className="text-slate-600">•</span>
+                  <span>
+                    QWZ Volume:{' '}
+                    <strong className="text-slate-200 font-mono">
+                      {volumeM3.toFixed(3)} m³ ({(volumeM3 * 1000).toFixed(0)} L)
+                    </strong>
+                  </span>
+                  <span className="text-slate-600">•</span>
+                  <span>
+                    Min Sensors: <strong className="text-cyan-400 font-mono">{minSensors}</strong>
+                  </span>
+                  <span className="text-slate-600">•</span>
+                  <span>
+                    Class {meta.furnaceClass}: <strong className="text-slate-200 font-mono">±{tolerance} {tempUnit}</strong>
+                  </span>
+                </p>
+              </div>
             </div>
 
             {/* Global Actions */}
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               {/* UK Metric Standard Toggle */}
               <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-0.5 text-[10px] font-mono">
                 <button
@@ -883,58 +857,62 @@ export default function App() {
               <button
                 onClick={handleExportAllSettings}
                 title="Save all settings, presets, channels, and survey data to local file"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition-all cursor-pointer"
               >
-                <Save className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="hidden md:inline">Save Settings</span>
+                <Save className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span>Save</span>
               </button>
               <button
                 onClick={() => settingsFileInputRef.current?.click()}
                 title="Load all settings and presets from local file"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition-all cursor-pointer"
               >
-                <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden md:inline">Load Settings</span>
+                <FolderOpen className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Load</span>
+              </button>
+
+              <button
+                onClick={() => setMethodologyModalOpen(true)}
+                title="View how all calculations and Pass/Fail criteria are performed (Auditor Reference)"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-950/90 hover:bg-indigo-900 text-indigo-200 text-xs font-bold border border-indigo-700/80 transition-all cursor-pointer"
+              >
+                <Calculator className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span>Calculation &amp; Pass/Fail Info</span>
               </button>
 
               <button
                 onClick={() => setReportModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
               >
-                <Download className="w-4 h-4" />
-                <span className="hidden sm:inline">Preview Report</span>
+                <Download className="w-3.5 h-3.5 shrink-0" />
+                <span>Preview Report</span>
               </button>
             </div>
-        </div>
-
-        {/* Audit Status Bar */}
-        <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5 font-medium">
-              {isOverallConformant ? (
-                <span className="text-emerald-400 flex items-center gap-1">
-                  <CheckCircle2 className="w-4 h-4" /> AMS 2750 Rev H Conformant
-                </span>
-              ) : (
-                <span className="text-amber-400 flex items-center gap-1">
-                  <AlertTriangle className="w-4 h-4" /> Action Required
-                </span>
-              )}
-            </span>
-            <span className="text-slate-600">|</span>
-            <span>
-              Class {meta.furnaceClass} Tolerance: <strong className="text-slate-200 font-mono">±{tolerance} {tempUnit}</strong>
-            </span>
           </div>
 
-          <div className="hidden sm:flex items-center gap-2 text-slate-500 text-[11px]">
-            <span>PRI Nadcap AC7102/8</span>
-            <span>•</span>
-            <span>
-              {instrument.traceabilityNumber?.trim()
-                ? `Traceability: ${instrument.traceabilityNumber}`
-                : 'No Calibration Details Entered'}
-            </span>
+          {/* Second Row: Responsive Step Navigation Bar (Fits all screen widths with zero sideways scroll) */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1 bg-slate-950/70 border border-slate-800/90 rounded-xl p-1">
+            {STEPS.map((step, idx) => {
+              const Icon = step.icon;
+              const isActive = activeStep === step.id;
+              const isPast = STEPS.findIndex(s => s.id === activeStep) > idx;
+              return (
+                <button
+                  key={step.id}
+                  onClick={() => setActiveStep(step.id)}
+                  className={`flex items-center justify-center sm:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer min-w-0 ${
+                    isActive
+                      ? 'bg-blue-600 text-white font-bold shadow-md'
+                      : isPast
+                      ? 'text-blue-400 hover:bg-slate-900 hover:text-blue-300'
+                      : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                  }`}
+                >
+                  <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-white' : isPast ? 'text-blue-400' : 'text-slate-500'}`} />
+                  <span className="text-[11px] truncate">{step.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </header>
@@ -942,23 +920,23 @@ export default function App() {
       {/* ----------------------------------------------------- */}
       {/* 2. DUAL-PANE WORKBENCH */}
       {/* ----------------------------------------------------- */}
-      <main className="flex-1 p-4 lg:p-6 grid grid-cols-1 xl:grid-cols-12 gap-6 max-w-[1920px] mx-auto w-full">
+      <main className="flex-1 p-3 sm:p-4 lg:p-5 grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-5 max-w-[1920px] mx-auto w-full min-w-0">
         {/* Left Column: 2D Isometric Technical Schematic (matching Picture 1) & 3D Toggle */}
-        <div className="xl:col-span-6 flex flex-col gap-4">
-          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-3 px-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <LayoutGrid className="w-4 h-4 text-blue-500" />
-              <h2 className="text-sm font-bold text-white">
-                Furnace Wire Grid Web & Thermocouple Schematic
+        <div className="xl:col-span-5 2xl:col-span-6 flex flex-col gap-4 min-w-0">
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-3 px-4 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <LayoutGrid className="w-4 h-4 text-blue-500 shrink-0" />
+              <h2 className="text-xs sm:text-sm font-bold text-white truncate">
+                Furnace Wire Grid Web &amp; Thermocouple Schematic
               </h2>
             </div>
             <span className="text-[11px] text-slate-400 font-mono">
-              Use mouse / sliders to rotate & inspect 2D isometric schematic
+              Drag / touch or use sliders to rotate &amp; tap △ to map channel
             </span>
           </div>
 
           {/* View Container */}
-          <div className="h-[520px] xl:h-[660px] w-full">
+          <div className="w-full min-w-0">
             <TechnicalSchematic2D
               chamber={chamber}
               qwz={qwz}
@@ -966,6 +944,7 @@ export default function App() {
               dimUnit={dimUnit}
               selectedChannelId={selectedChannelId}
               onSelectChannel={setSelectedChannelId}
+              onUpdateChannels={setChannels}
               onExportImageReady={setDiagramImageBase64}
             />
           </div>
@@ -990,20 +969,20 @@ export default function App() {
         </div>
 
         {/* Right Column: Guided Step-by-Step Workbench */}
-        <div className="xl:col-span-6 flex flex-col space-y-4">
+        <div className="xl:col-span-7 2xl:col-span-6 flex flex-col space-y-4 min-w-0">
           {/* Step Controls & Info Banner */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 shrink-0 rounded-lg bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
                 {React.createElement(STEPS[currentStepIndex].icon, { className: "w-4 h-4 text-blue-400" })}
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">{STEPS[currentStepIndex].label}</h3>
+              <div className="min-w-0">
+                <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider truncate">{STEPS[currentStepIndex].label}</h3>
                 <p className="text-[10px] text-slate-400 font-medium">Follow the steps for AMS 2750 Rev H compliance</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={prevStep}
                 disabled={currentStepIndex === 0}
@@ -1022,7 +1001,7 @@ export default function App() {
           </div>
 
           {/* Active Step Content */}
-          <div className="flex-1 overflow-y-auto pr-1">
+          <div className="flex-1 min-w-0">
             {activeStep === 'instructions' && (
               <InstructionManual
                 tempUnit={tempUnit}
@@ -1083,13 +1062,13 @@ export default function App() {
                 </div>
 
                 {/* Furnace Presets Bar */}
-                <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 flex-1 min-w-[260px]">
-                    <span className="text-slate-400 font-medium text-xs">Quick Load Preset:</span>
+                <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="text-slate-400 font-medium text-xs shrink-0">Quick Load Preset:</span>
                     <select
                       value={selectedFurnacePresetId}
                       onChange={(e) => handleSelectFurnacePreset(e.target.value)}
-                      className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-cyan-300 font-bold focus:outline-none flex-1"
+                      className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-cyan-300 font-bold focus:outline-none flex-1 min-w-0"
                     >
                       {furnacePresets.length === 0 ? (
                         <option value="">-- No furnace presets saved --</option>
@@ -1101,11 +1080,11 @@ export default function App() {
                         ))
                       )}
                     </select>
-                    <button onClick={() => handleDeleteFurnacePreset(selectedFurnacePresetId)} className="p-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-400 rounded-lg text-xs cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => handleDeleteFurnacePreset(selectedFurnacePresetId)} className="p-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-400 rounded-lg text-xs cursor-pointer shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                   <div className="flex items-center gap-2">
-                    <input type="text" placeholder="New preset name..." value={newFurnacePresetName} onChange={(e) => setNewFurnacePresetName(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:outline-none" />
-                    <button onClick={handleSaveCurrentAsFurnacePreset} className="flex items-center gap-1.5 px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold cursor-pointer"><Plus className="w-3.5 h-3.5" /> Save</button>
+                    <input type="text" placeholder="New preset name..." value={newFurnacePresetName} onChange={(e) => setNewFurnacePresetName(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:outline-none flex-1 sm:w-44 min-w-0" />
+                    <button onClick={handleSaveCurrentAsFurnacePreset} className="flex items-center gap-1.5 px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold cursor-pointer shrink-0"><Plus className="w-3.5 h-3.5" /> Save</button>
                   </div>
                 </div>
 
@@ -1137,28 +1116,49 @@ export default function App() {
                     </select>
                   </div>
                   
-                  <div className="col-span-2 bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3 mt-2">
-                    <div className="flex items-center justify-between">
+                  <div className="col-span-1 md:col-span-2 bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3 mt-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-amber-400" />
-                        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-300">TUS Interval & Frequency (AMS 2750 Rev H Table 15 / Table 16 & Table 20)</h4>
+                        <Calendar className="w-4 h-4 text-amber-400 shrink-0" />
+                        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-300">TUS Interval &amp; Frequency (AMS 2750 Rev H Table 15 / Table 16 &amp; Table 22)</h4>
                       </div>
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input type="checkbox" checked={isExtendedInterval} onChange={(e) => setIsExtendedInterval(e.target.checked)} className="rounded border-slate-700 text-cyan-500 focus:ring-0" />
                         <span className="text-[10px] text-slate-300">Apply Reduced Frequency (Extended Interval)</span>
                       </label>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
-                      <div className="sm:col-span-2 text-[11px] text-slate-300 leading-relaxed">
-                        {getTusIntervalInfo(meta.furnaceClass, meta.instrumentationType, meta.furnaceApplication || 'Parts').description}
-                      </div>
-                      <div className="bg-slate-900 border border-slate-800 p-2.5 rounded-lg text-center">
-                        <div className="text-[9px] uppercase font-bold text-slate-500">Next TUS Due Date</div>
-                        <div className="text-sm font-bold text-cyan-300 font-mono">
-                          {calculateNextTusDueDate(meta.date, meta.furnaceClass, isExtendedInterval, meta.instrumentationType, meta.furnaceApplication || 'Parts')}
+                    {(() => {
+                      const info = getTusIntervalInfo(meta.furnaceClass, meta.instrumentationType, meta.furnaceApplication || 'Parts');
+                      const dueInfo = calculateNextTusDueDate(meta.date, meta.furnaceClass, meta.instrumentationType, isExtendedInterval, meta.furnaceApplication || 'Parts');
+                      return (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+                          <div className="sm:col-span-2 text-[11px] text-slate-300 leading-relaxed space-y-1">
+                            <div>
+                              <span className="text-slate-400">Standard Initial Interval ({info.tableRef}):</span>{' '}
+                              <strong className="text-white">{info.initialLabel}</strong>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">Extended Interval:</span>{' '}
+                              <strong className="text-cyan-300">{info.extendedLabel}</strong>
+                              {info.canExtend && (
+                                <span className="text-slate-400">
+                                  {' '}(requires <strong>{info.consecutiveRequiredForExtension}</strong> consecutive conforming periodic TUS)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="bg-slate-900 border border-slate-800 p-2.5 rounded-lg text-center">
+                            <div className="text-[9px] uppercase font-bold text-slate-500">Next TUS Due Date</div>
+                            <div className="text-sm font-bold text-cyan-300 font-mono">
+                              {dueInfo.dueDate}
+                            </div>
+                            <div className="text-[9px] text-slate-400 font-mono mt-0.5">
+                              Table 22 Grace (+{dueInfo.graceDays}d): {dueInfo.maxGraceDate}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -1243,6 +1243,7 @@ export default function App() {
                   onUpdateMeta={setMeta}
                   onUpdateTrendData={setTrendData}
                   onUpdateDwellPeriods={setDwellPeriods}
+                  onOpenMethodology={() => setMethodologyModalOpen(true)}
                 />
               </div>
             )}
@@ -1262,15 +1263,24 @@ export default function App() {
                    <CheckCircle2 className="w-12 h-12 text-blue-500 mx-auto mb-3" />
                    <h3 className="text-lg font-bold text-white mb-2">Final Survey Verification</h3>
                    <p className="text-sm text-slate-400 mb-6 max-w-md mx-auto">
-                     All survey data has been processed. Review the checklist above and the report preview before final generation.
+                     All survey data has been processed. Review the checklist above, inspect the auditor calculation breakdown, or preview the final report.
                    </p>
-                   <button
-                    onClick={() => setReportModalOpen(true)}
-                    className="inline-flex items-center gap-3 px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold shadow-xl shadow-blue-500/20 transition-all cursor-pointer"
-                  >
-                    <Download className="w-5 h-5" />
-                    <span>Generate Full AMS 2750 Report (.pdf)</span>
-                  </button>
+                   <div className="flex flex-wrap items-center justify-center gap-3">
+                     <button
+                       onClick={() => setMethodologyModalOpen(true)}
+                       className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-indigo-950 hover:bg-indigo-900 text-indigo-200 border border-indigo-700 font-bold text-sm transition-all cursor-pointer"
+                     >
+                       <Calculator className="w-4 h-4 text-indigo-400" />
+                       <span>View Calculation &amp; Pass/Fail Reasoning</span>
+                     </button>
+                     <button
+                       onClick={() => setReportModalOpen(true)}
+                       className="inline-flex items-center gap-3 px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold shadow-xl shadow-blue-500/20 transition-all cursor-pointer"
+                     >
+                       <Download className="w-5 h-5" />
+                       <span>Generate Full AMS 2750 Report (.pdf)</span>
+                     </button>
+                   </div>
                 </div>
               </div>
             )}
@@ -1279,7 +1289,7 @@ export default function App() {
       </main>
 
       {/* ----------------------------------------------------- */}
-      {/* 3. REPORT PREVIEW & DOWNLOAD MODAL */}
+      {/* 3. REPORT PREVIEW & AUDITOR METHODOLOGY MODALS */}
       {/* ----------------------------------------------------- */}
       <ReportPreviewModal
         isOpen={reportModalOpen}
@@ -1294,7 +1304,21 @@ export default function App() {
         diagramImageBase64={diagramImageBase64}
         trendData={trendData}
         dwellPeriods={dwellPeriods}
+      />
 
+      <CalculationMethodologyModal
+        isOpen={methodologyModalOpen}
+        onClose={() => setMethodologyModalOpen(false)}
+        meta={meta}
+        chamber={chamber}
+        qwz={qwz}
+        channels={channels}
+        setpoints={setpoints}
+        setpointAnalyses={setpointAnalyses}
+        instrument={instrument}
+        checklist={checklist}
+        tempUnit={tempUnit}
+        dimUnit={dimUnit}
       />
     </div>
   );

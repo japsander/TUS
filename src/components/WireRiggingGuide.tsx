@@ -91,7 +91,12 @@ export const WireRiggingGuide: React.FC<WireRiggingGuideProps> = ({
               Primary Backbone: 4 Opposite-Corner 3D Tension Diagonals
             </h4>
             <span className="text-[11px] text-slate-400 font-mono">
-              All 4 diagonals intersect at Center Hub TC {plan.oppositeCornerDiagonals[0]?.center.channelNumber}
+              All 4 diagonals intersect at Center Hub{' '}
+              {plan.oppositeCornerDiagonals[0]?.center
+                ? plan.oppositeCornerDiagonals[0].center.channelNumber > 0
+                  ? `TC ${plan.oppositeCornerDiagonals[0].center.channelNumber}`
+                  : '△ Unassigned'
+                : 'Center'}
             </span>
           </div>
 
@@ -116,17 +121,23 @@ export const WireRiggingGuide: React.FC<WireRiggingGuideProps> = ({
                 <div className="flex items-center justify-between text-xs bg-slate-900/90 rounded-lg p-2 border border-slate-800 text-slate-200 font-mono">
                   <div className="text-center">
                     <span className="text-[10px] text-slate-500 block">Start Corner</span>
-                    <strong className="text-cyan-400">TC {diag.cornerA.channelNumber}</strong>
+                    <strong className="text-cyan-400">
+                      {diag.cornerA.channelNumber > 0 ? `TC ${diag.cornerA.channelNumber}` : '△ Unassigned'}
+                    </strong>
                   </div>
                   <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
                   <div className="text-center">
                     <span className="text-[10px] text-amber-500 block">Central Hub Ring</span>
-                    <strong className="text-amber-300">TC {diag.center.channelNumber} (Center)</strong>
+                    <strong className="text-amber-300">
+                      {diag.center.channelNumber > 0 ? `TC ${diag.center.channelNumber} (Center)` : '△ Unassigned (Center)'}
+                    </strong>
                   </div>
                   <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
                   <div className="text-center">
                     <span className="text-[10px] text-slate-500 block">Opposite Corner</span>
-                    <strong className="text-cyan-400">TC {diag.cornerB.channelNumber}</strong>
+                    <strong className="text-cyan-400">
+                      {diag.cornerB.channelNumber > 0 ? `TC ${diag.cornerB.channelNumber}` : '△ Unassigned'}
+                    </strong>
                   </div>
                 </div>
 
@@ -239,17 +250,18 @@ export const WireRiggingGuide: React.FC<WireRiggingGuideProps> = ({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
+        {/* Desktop & Landscape Tablet Fluid Table */}
+        <div className="hidden md:block w-full">
+          <table className="w-full text-xs text-left table-auto">
             <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800 font-mono">
               <tr>
-                <th className="py-2.5 px-4 w-12">#</th>
-                <th className="py-2.5 px-4">Rigging Wire Segment</th>
-                <th className="py-2.5 px-4">From Sensor</th>
-                <th className="py-2.5 px-4">To Sensor</th>
-                <th className="py-2.5 px-4 text-right">Cut Length ({dimUnit})</th>
-                <th className="py-2.5 px-4">Category</th>
-                <th className="py-2.5 px-4">Rigging Purpose</th>
+                <th className="py-2.5 px-3 w-10">#</th>
+                <th className="py-2.5 px-3">Rigging Wire Segment</th>
+                <th className="py-2.5 px-2.5">From</th>
+                <th className="py-2.5 px-2.5">To</th>
+                <th className="py-2.5 px-3 text-right">Cut Length ({dimUnit})</th>
+                <th className="py-2.5 px-3">Category</th>
+                <th className="py-2.5 px-3">Rigging Purpose</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono">
@@ -258,14 +270,18 @@ export const WireRiggingGuide: React.FC<WireRiggingGuideProps> = ({
                   key={c.id}
                   className="hover:bg-slate-800/40 transition-colors"
                 >
-                  <td className="py-2.5 px-4 text-slate-500 font-bold">{c.stepNumber}</td>
-                  <td className="py-2.5 px-4 font-sans font-medium text-slate-100">{c.title}</td>
-                  <td className="py-2.5 px-4 text-cyan-400">TC {c.fromChannelNum}</td>
-                  <td className="py-2.5 px-4 text-cyan-400">TC {c.toChannelNum}</td>
-                  <td className="py-2.5 px-4 text-right font-bold text-emerald-400">
+                  <td className="py-2 px-3 text-slate-500 font-bold">{c.stepNumber}</td>
+                  <td className="py-2 px-3 font-sans font-medium text-slate-100">{c.title}</td>
+                  <td className="py-2 px-2.5 text-cyan-400 whitespace-nowrap">
+                    {c.fromChannelNum > 0 ? `TC ${c.fromChannelNum}` : '△ Unassigned'}
+                  </td>
+                  <td className="py-2 px-2.5 text-cyan-400 whitespace-nowrap">
+                    {c.toChannelNum > 0 ? `TC ${c.toChannelNum}` : '△ Unassigned'}
+                  </td>
+                  <td className="py-2 px-3 text-right font-bold text-emerald-400 whitespace-nowrap">
                     {c.cutLength} {dimUnit}
                   </td>
-                  <td className="py-2.5 px-4">
+                  <td className="py-2 px-3 whitespace-nowrap">
                     <span
                       className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
                         c.category === '3d-diagonal'
@@ -284,13 +300,61 @@ export const WireRiggingGuide: React.FC<WireRiggingGuideProps> = ({
                       {c.category.replace('-', ' ')}
                     </span>
                   </td>
-                  <td className="py-2.5 px-4 font-sans text-slate-400 text-[11px]">
+                  <td className="py-2 px-3 font-sans text-slate-400 text-[11px]">
                     {c.description}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile & Portrait Tablet Card View */}
+        <div className="md:hidden divide-y divide-slate-800/80">
+          {filteredCables.map((c) => (
+            <div key={c.id} className="p-3.5 space-y-2 bg-slate-900/40">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-5 h-5 rounded-full bg-slate-950 border border-slate-700 text-slate-400 font-mono text-[10px] font-bold flex items-center justify-center shrink-0">
+                    {c.stepNumber}
+                  </span>
+                  <span className="text-xs font-semibold text-slate-100 truncate">{c.title}</span>
+                </div>
+                <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800 shrink-0">
+                  {c.cutLength} {dimUnit}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-cyan-400 font-bold">
+                    {c.fromChannelNum > 0 ? `TC ${c.fromChannelNum}` : '△ Unassigned'}
+                  </span>
+                  <ArrowRight className="w-3 h-3 text-slate-500" />
+                  <span className="text-cyan-400 font-bold">
+                    {c.toChannelNum > 0 ? `TC ${c.toChannelNum}` : '△ Unassigned'}
+                  </span>
+                </div>
+                <span
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${
+                    c.category === '3d-diagonal'
+                      ? 'bg-blue-950 text-blue-300 border-blue-800'
+                      : c.category === 'perimeter-frame'
+                      ? 'bg-slate-900 text-slate-300 border-slate-700'
+                      : c.category === 'depth-rail'
+                      ? 'bg-purple-950 text-purple-300 border-purple-800'
+                      : c.category === 'face-cross'
+                      ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                      : c.category === 'mid-plane'
+                      ? 'bg-amber-950 text-amber-300 border-amber-800'
+                      : 'bg-slate-800 text-slate-300 border-slate-700'
+                  }`}
+                >
+                  {c.category.replace('-', ' ')}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">{c.description}</p>
+            </div>
+          ))}
         </div>
       </div>
     </div>

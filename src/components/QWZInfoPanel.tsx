@@ -10,6 +10,8 @@ import {
   calculateVolumeInM3,
   calculateVolumeInCuFt,
   getMinRequiredSensors,
+  getLogicalWireRiggingSchedule,
+  formatBaseSensorLocation,
 } from '../utils/ams2750';
 import {
   Layers,
@@ -56,8 +58,12 @@ export const QWZInfoPanel: React.FC<QWZInfoPanelProps> = ({
 }) => {
   const volumeM3 = calculateVolumeInM3(qwz, dimUnit);
   const volumeCuFt = calculateVolumeInCuFt(qwz, dimUnit);
-  const { minSensors, additionalSensors } = getMinRequiredSensors(volumeCuFt, volumeM3);
-  const meetsSensorCount = channels.length >= minSensors;
+  const { minSensors, baselineSensors, additionalSensors } = getMinRequiredSensors(
+    volumeCuFt,
+    volumeM3
+  );
+  const hasValidVolume = volumeM3 > 0;
+  const meetsSensorCount = hasValidVolume && channels.length >= minSensors;
 
   // Calibration status
   const today = new Date();
@@ -83,6 +89,11 @@ export const QWZInfoPanel: React.FC<QWZInfoPanelProps> = ({
     chamberVolM3 > 0 ? Math.min(100, Math.round((volumeM3 / chamberVolM3) * 1000) / 10) : 0;
 
   const selectedChannel = channels.find((c) => c.id === selectedChannelId) || channels[0];
+  const riggingPlan = getLogicalWireRiggingSchedule(channels, qwz, dimUnit);
+  const formatTcBadge = (ch?: ThermocoupleChannel) => {
+    if (!ch) return '△';
+    return ch.channelNumber > 0 ? `TC ${ch.channelNumber}` : '△ Unassigned';
+  };
 
   return (
     <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 lg:p-5 space-y-4 shadow-xl">
@@ -116,38 +127,58 @@ export const QWZInfoPanel: React.FC<QWZInfoPanelProps> = ({
                 : 'bg-amber-950/80 border-amber-800 text-amber-300 animate-pulse'
             }`}
           >
-            {channels.length} Sensors ({meetsSensorCount ? 'Compliant' : `Min ${minSensors}`})
+            {channels.length} Sensors (
+            {!hasValidVolume ? 'Enter Dimensions' : meetsSensorCount ? 'Compliant' : `Min ${minSensors}`}
+            )
           </span>
         </div>
       </div>
 
       {/* Sensor Count Compliance & Auto-Adjustment Alert Banner */}
-      {!meetsSensorCount && onFitSensorsToQWZ && (
-        <div className="bg-amber-950/60 border border-amber-700/80 rounded-xl p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-            <div className="text-amber-200">
-              <span className="font-bold">AMS 2750 Rev H Table 17 Alert: </span>
-              Volume is <strong>{volumeM3.toFixed(3)} m³</strong> which requires at least{' '}
-              <strong className="text-white underline">{minSensors} sensors</strong> (currently {channels.length}).
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => onFitSensorsToQWZ(minSensors)}
-              className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold font-mono text-xs cursor-pointer shadow-sm transition-colors"
-            >
-              Auto-Adjust to {minSensors} Sensors
-            </button>
-            <button
-              onClick={() => onFitSensorsToQWZ(14)}
-              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-mono text-xs border border-slate-700 cursor-pointer transition-colors"
-            >
-              Set 14 (Balanced)
-            </button>
+      {!hasValidVolume ? (
+        <div className="bg-slate-950/80 border border-slate-700 rounded-xl p-3 text-xs flex items-center gap-2.5 text-slate-300">
+          <Info className="w-4 h-4 text-cyan-400 shrink-0" />
+          <div>
+            <span className="font-bold text-white">Work Zone Dimensions Required: </span>
+            Work zone volume is currently <strong>0.000 m³</strong>. Enter positive Work Zone Length, Width, and Height above. Per{' '}
+            <strong>AMS 2750 Rev H Table 17</strong>, volumes <strong>&lt; 0.085 m³ (&lt; 3 ft³)</strong> require{' '}
+            <strong>5 sensors</strong> (or 9 per Note 1), volumes <strong>0.085 to &lt; 6.4 m³ (3 to &lt; 225 ft³)</strong> require{' '}
+            <strong>9 sensors</strong>, and volumes <strong>≥ 6.4 m³ (≥ 225 ft³)</strong> follow <strong>Table 18</strong>.
           </div>
         </div>
+      ) : (
+        !meetsSensorCount &&
+        onFitSensorsToQWZ && (
+          <div className="bg-amber-950/60 border border-amber-700/80 rounded-xl p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <div className="text-amber-200">
+                <span className="font-bold">
+                  AMS 2750 Rev H {volumeCuFt >= 225 ? 'Table 18' : 'Table 17'} Alert:{' '}
+                </span>
+                Volume is <strong>{volumeM3.toFixed(3)} m³ ({volumeCuFt.toFixed(1)} ft³)</strong> which requires at least{' '}
+                <strong className="text-white underline">{minSensors} sensors</strong> (currently {channels.length}).
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => onFitSensorsToQWZ(minSensors)}
+                className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold font-mono text-xs cursor-pointer shadow-sm transition-colors"
+              >
+                Auto-Adjust to {minSensors} Sensors
+              </button>
+              {minSensors === 5 && (
+                <button
+                  onClick={() => onFitSensorsToQWZ(9)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-mono text-xs border border-slate-700 cursor-pointer transition-colors"
+                >
+                  Set 9 (Table 17 Note 1)
+                </button>
+              )}
+            </div>
+          </div>
+        )
       )}
 
       {/* 2. Key Dimensions Cards Grid */}
@@ -184,14 +215,18 @@ export const QWZInfoPanel: React.FC<QWZInfoPanelProps> = ({
           </div>
         </div>
 
-        {/* AMS 2750 Rev H Table 17 Sensors */}
+        {/* AMS 2750 Rev H Table 17 / 18 Sensors */}
         <div className="bg-slate-950/90 border border-slate-800/80 rounded-xl p-3 space-y-1">
-          <div className="text-slate-400 text-[11px] font-medium">AMS 2750 Table 17 Min:</div>
+          <div className="text-slate-400 text-[11px] font-medium">
+            AMS 2750 {volumeCuFt >= 225 ? 'Table 18' : 'Table 17'} Min:
+          </div>
           <div className="font-mono font-bold text-cyan-300 text-sm">
-            {minSensors} Sensors Minimum
+            {hasValidVolume ? `${minSensors} Sensors Minimum` : '5 (<0.085m³) / 9 (≥0.085m³)'}
           </div>
           <div className="text-[10px] text-slate-500 font-mono">
-            9 Baseline + {additionalSensors} Excess Vol
+            {hasValidVolume
+              ? `${baselineSensors} Baseline + ${additionalSensors} Excess Vol`
+              : 'Enter QWZ dimensions'}
           </div>
         </div>
 
@@ -271,7 +306,12 @@ export const QWZInfoPanel: React.FC<QWZInfoPanelProps> = ({
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
               <span className="font-bold text-white text-xs">
-                Selected Probe: <strong className="text-cyan-300 font-mono">{selectedChannel.label}</strong>
+                Selected Probe:{' '}
+                <strong className="text-cyan-300 font-mono">
+                  {selectedChannel.channelNumber > 0
+                    ? `TC ${selectedChannel.channelNumber} (${selectedChannel.recorderChannel}) — ${formatBaseSensorLocation(selectedChannel.label)}`
+                    : `△ Unassigned — ${formatBaseSensorLocation(selectedChannel.label)}`}
+                </strong>
               </span>
             </div>
             <span className="text-[11px] font-mono text-slate-400">
@@ -308,43 +348,29 @@ export const QWZInfoPanel: React.FC<QWZInfoPanelProps> = ({
           )}
         </div>
 
-        {/* 4 Diagonals Badges */}
+        {/* 4 Diagonals Badges (Live Synced with Schematic & Sensor Manager) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono">
-          <div className="bg-slate-950/80 border border-blue-900/40 rounded-lg p-2 flex items-center justify-between text-slate-300">
-            <span>
-              <strong className="text-blue-400">Diag 1:</strong> Front Lower Left (TC 4) ➔ Rear Upper Right
-            </span>
-            <span className="text-cyan-300 font-bold">
-              {Math.round(Math.sqrt(qwz.length * qwz.length + qwz.width * qwz.width + qwz.height * qwz.height))} {dimUnit}
-            </span>
-          </div>
-
-          <div className="bg-slate-950/80 border border-blue-900/40 rounded-lg p-2 flex items-center justify-between text-slate-300">
-            <span>
-              <strong className="text-blue-400">Diag 2:</strong> Front Lower Right (TC 3) ➔ Rear Upper Left
-            </span>
-            <span className="text-cyan-300 font-bold">
-              {Math.round(Math.sqrt(qwz.length * qwz.length + qwz.width * qwz.width + qwz.height * qwz.height))} {dimUnit}
-            </span>
-          </div>
-
-          <div className="bg-slate-950/80 border border-blue-900/40 rounded-lg p-2 flex items-center justify-between text-slate-300">
-            <span>
-              <strong className="text-blue-400">Diag 3:</strong> Front Upper Left (TC 1) ➔ Rear Lower Right
-            </span>
-            <span className="text-cyan-300 font-bold">
-              {Math.round(Math.sqrt(qwz.length * qwz.length + qwz.width * qwz.width + qwz.height * qwz.height))} {dimUnit}
-            </span>
-          </div>
-
-          <div className="bg-slate-950/80 border border-blue-900/40 rounded-lg p-2 flex items-center justify-between text-slate-300">
-            <span>
-              <strong className="text-blue-400">Diag 4:</strong> Front Upper Right (TC 2) ➔ Rear Lower Left
-            </span>
-            <span className="text-cyan-300 font-bold">
-              {Math.round(Math.sqrt(qwz.length * qwz.length + qwz.width * qwz.width + qwz.height * qwz.height))} {dimUnit}
-            </span>
-          </div>
+          {riggingPlan.oppositeCornerDiagonals.length > 0 ? (
+            riggingPlan.oppositeCornerDiagonals.map((diag, idx) => (
+              <div
+                key={diag.id}
+                className="bg-slate-950/80 border border-blue-900/40 rounded-lg p-2 flex items-center justify-between text-slate-300 gap-2"
+              >
+                <span className="truncate">
+                  <strong className="text-blue-400">Diag {idx + 1}:</strong>{' '}
+                  {formatBaseSensorLocation(diag.cornerA.label)} ({formatTcBadge(diag.cornerA)}) ➔{' '}
+                  {formatBaseSensorLocation(diag.cornerB.label)} ({formatTcBadge(diag.cornerB)})
+                </span>
+                <span className="text-cyan-300 font-bold shrink-0">
+                  {diag.totalSpanLength} {dimUnit}
+                </span>
+              </div>
+            ))
+          ) : (
+            <div className="col-span-2 bg-slate-950/80 border border-slate-800 rounded-lg p-2 text-slate-400 text-center">
+              Select a furnace preset or configure sensors to generate 3D diagonal rigging spans.
+            </div>
+          )}
         </div>
 
         <p className="text-[11px] text-slate-400 leading-relaxed font-sans pt-1">

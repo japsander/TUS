@@ -1,1 +1,21 @@
 @import "tailwindcss";
+
+@layer base {
+  html,
+  body,
+  #root {
+    overflow-x: hidden;
+    max-width: 100vw;
+    width: 100%;
+  }
+
+  /* Hide number input spinners in compact table cells so full numbers remain clearly visible */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
